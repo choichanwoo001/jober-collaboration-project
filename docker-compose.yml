@@ -62,6 +62,31 @@ services:
       - app-network
     restart: unless-stopped
 
+  # ===================================================================
+  #  Nginx 리버스 프록시
+  # ===================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: pls-jober-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./front/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+      - ai-service
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   redis_data:
 
