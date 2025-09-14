@@ -30,6 +30,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux' // WebClient를 사용하기 위한 의존성
     // OAuth2 의존성 제거 - 커스텀 JWT 사용
     implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+    
+    // Kakao OAuth2 for Social Login
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
 
 
     // JWT
@@ -47,7 +50,7 @@ dependencies {
     implementation 'org.flywaydb:flyway-mysql'
 
     // H2 (테스트용)
-//    testRuntimeOnly 'com.h2database:h2'
+    testRuntimeOnly 'com.h2database:h2'
     
     // Lombok
     compileOnly 'org.projectlombok:lombok'
