@@ -1,128 +1,93 @@
 # Final Project
 
-## 프로젝트 구조
+## 📁 프로젝트 구조
 
 ```
 final_project/
-├── back/          # Spring Boot 백엔드
-├── front/         # Vue 3 프론트엔드
-├── ai/            # FastAPI AI 서비스
+├── back/          # Spring Boot 백엔드 (포트 8080)
+├── front/         # Vue 3 프론트엔드 (포트 3000)gdgdgdgd
+├── ai/            # FastAPI AI 서비스 (포트 8000)
 └── README.md
 ```
 
-## 기술 스택
+## 🛠️ 기술 스택
 
 ### Frontend (Vue 3)
-- Vue 3 + TypeScript
-- Vite (빌드 도구)
-- Vuetify (UI 라이브러리)
-- Axios + Vue Query (서버 통신)
-- Pinia (상태 관리)
-- Vue Router (라우팅)
+- **Vue 3** + TypeScript
+- **Vite** (빌드 도구)
+- **Vuetify** (UI 라이브러리)
+- **Axios** + **@tanstack/vue-query** (서버 통신)
+- **Pinia** (상태 관리)
+- **Vue Router** (라우팅)
 
 ### Backend (Spring Boot)
-- Spring Boot
-- Redis
-- MySQL + JPA
-- Gradle
+- **Spring Boot 3.2.0**
+- **Java 17**
+- **MySQL** + **JPA**
+- **Redis** (캐시/세션)
+- **Spring Security** + **JWT**
+- **Gradle**
 
 ### AI Service (FastAPI)
-- FastAPI
-- ChromaDB
-- OpenAI
-- Hugging Face
+- **FastAPI**
+- **ChromaDB** (벡터 데이터베이스)
+- **OpenAI** (GPT 모델)
+- **Hugging Face** (임베딩 모델)
+- **Python 3.8+**
 
-## 실행 방법
+## 🚀 실행 방법
 
-### 1. Frontend (Vue 3) 테스트
+### 1️⃣ 필요한 서버들 실행
 
+**전체 시스템을 동작시키려면 다음 3개 서버를 모두 실행해야 합니다:**
+
+#### 1. Backend 서버 (Spring Boot)
 ```bash
-# front 폴더로 이동
-cd front
-
-# 의존성 설치
-npm install
-
-# 개발 서버 실행 (포트 3000)
-npm run dev
-
-# 브라우저에서 확인
-# http://localhost:3000
-```
-
-### 2. Backend (Spring Boot) 테스트
-
-```bash
-# back 폴더로 이동
 cd back
-
-# Gradle Wrapper 권한 설정 (Linux/Mac)
-chmod +x gradlew
-
-# 애플리케이션 실행 (포트 8080)
 ./gradlew bootRun
-
-# 또는 Windows에서
-gradlew.bat bootRun
-
-# API 테스트
-curl http://localhost:8080/api/
-curl http://localhost:8080/api/health
+# 또는 Windows: gradlew.bat bootRun
 ```
+- **포트**: 8080
+- **확인**: http://localhost:8080/api/health
 
-### 3. AI Service (FastAPI) 테스트
-
+#### 2. AI 서비스 (FastAPI)
 ```bash
-# ai 폴더로 이동
 cd ai
+# 가상환경 활성화
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/Mac
 
-# 가상환경 생성
-python -m venv venv
-
-# 가상환경 활성화 (Windows)
-venv\Scripts\activate
-
-# 가상환경 활성화 (Linux/Mac)
-source venv/bin/activate
-
-# 의존성 설치
-pip install -r requirements.txt
-
-# 환경 변수 설정
-cp env.example .env
-# .env 파일을 편집하여 OpenAI API 키 등 설정
-
-# 서버 실행 (포트 8000)
+# 서버 실행
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# API 문서 확인
-# http://localhost:8000/docs
-
-# API 테스트
-curl http://localhost:8000/
-curl http://localhost:8000/health
 ```
+- **포트**: 8000
+- **확인**: http://localhost:8000/docs
 
-## 전체 시스템 테스트
+#### 3. Frontend 서버 (Vue 3)
+```bash
+cd front
+npm install
+npm run dev
+```
+- **포트**: 3000
+- **확인**: http://localhost:3000
 
-1. **Backend 실행**: `cd back && ./gradlew bootRun`
-2. **AI Service 실행**: `cd ai && uvicorn main:app --reload`
-3. **Frontend 실행**: `cd front && npm run dev`
-4. **브라우저에서 확인**: `http://localhost:3000`
+### 2️⃣ 동작 확인
 
-## 포트 정보
+1. **3개 서버 모두 실행** 후 브라우저에서 `http://localhost:3000` 접속
+2. **카카오톡 템플릿 생성 기능** 사용 가능
+3. **AI 서비스**를 통한 템플릿 검증 및 생성
 
-- **Frontend**: 3000 (http://localhost:3000)
-- **Backend**: 8080 (http://localhost:8080/api)
-- **AI Service**: 8000 (http://localhost:8000)
+## 📋 사전 요구사항
 
-## 주의사항
+- **Java 17 이상**
+- **Node.js 18 이상**
+- **Python 3.8 이상**
+- **MySQL** (데이터베이스)
+- **Redis** (캐시 서버)
+- **OpenAI API 키** (AI 기능 사용 시)
 
-1. **Java 17 이상**이 설치되어 있어야 합니다.
-2. **Node.js 18 이상**이 설치되어 있어야 합니다.
-3. **Python 3.8 이상**이 설치되어 있어야 합니다.
-4. **MySQL**과 **Redis**가 실행 중이어야 합니다.
-5. **OpenAI API 키**가 필요합니다 (AI 서비스 사용 시).
+## 🔧 환경 설정
 
-각 폴더의 README.md를 참조하세요.
+각 폴더의 README.md를 참조하여 상세한 설정 방법을 확인하세요.
 
