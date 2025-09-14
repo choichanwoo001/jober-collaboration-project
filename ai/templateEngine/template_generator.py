@@ -228,7 +228,7 @@ class TemplateGenerator:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=1000
+                max_completion_tokens=1000
             )
             
             result = response.choices[0].message.content.strip()
@@ -285,7 +285,7 @@ class TemplateGenerator:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.2,  # 정책 준수를 위해 더 낮은 온도
-                max_tokens=1000
+                max_completion_tokens=1000
             )
             
             return response.choices[0].message.content.strip()
@@ -308,7 +308,7 @@ class TemplateGenerator:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.5,
-                max_tokens=1000
+                max_completion_tokens=1000
             )
             
             return response.choices[0].message.content.strip()
@@ -337,7 +337,7 @@ class TemplateGenerator:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=50
+                max_completion_tokens=50
             )
             
             return response.choices[0].message.content.strip()
