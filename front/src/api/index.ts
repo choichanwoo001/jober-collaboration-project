@@ -42,20 +42,28 @@ api.interceptors.response.use(
 // 인증 관련 API
 export const authApi = {
   // 로그인
-  login: (email: string, password: string) => 
+  login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }),
-  
+
   // 회원가입
-  signup: (username: string, email: string, password: string) => 
+  signup: (username: string, email: string, password: string) =>
     api.post('/auth/signup', { username, email, password }),
-  
+
   // 비밀번호 재설정 요청
-  forgotPassword: (email: string) => 
+  forgotPassword: (email: string) =>
     api.post('/auth/pw/request', { email }),
-  
+
   // 비밀번호 재설정
-  resetPassword: (token: string, newPassword: string) => 
-    api.post('/auth/pw/reset', { token, newPassword })
+  resetPassword: (token: string, newPassword: string) =>
+    api.post('/auth/pw/reset', { token, newPassword }),
+
+  // 카카오 로그인 URL 조회
+  getKakaoLoginUrl: () =>
+    api.get('/auth/kakao/url'),
+
+  // 카카오 로그인 처리
+  kakaoLogin: (authorizationCode: string) =>
+    api.post('/auth/kakao/login', null, { params: { code: authorizationCode } })
 }
 
 // 마이페이지 관련 API

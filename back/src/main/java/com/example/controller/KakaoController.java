@@ -3,6 +3,7 @@ package com.example.controller;
 import com.example.service.KakaoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,8 +17,14 @@ import java.util.Map;
 @RequestMapping("/api/auth/kakao")
 @RequiredArgsConstructor
 public class KakaoController {
-    
+
     private final KakaoService kakaoService;
+
+    @Value("${KAKAO_CLIENT_ID}")
+    private String kakaoClientId;
+
+    @Value("${KAKAO_REDIRECT_URI}")
+    private String kakaoRedirectUri;
     
     /**
      * 카카오 로그인 콜백 처리
@@ -46,11 +53,11 @@ public class KakaoController {
     @GetMapping("/url")
     public ResponseEntity<Map<String, String>> getKakaoLoginUrl() {
         String kakaoAuthUrl = "https://kauth.kakao.com/oauth/authorize" +
-                "?client_id=${KAKAO_CLIENT_ID}" +
-                "&redirect_uri=${KAKAO_REDIRECT_URI:http://localhost:3000/auth/kakao/callback}" +
+                "?client_id=" + kakaoClientId +
+                "&redirect_uri=" + kakaoRedirectUri +
                 "&response_type=code" +
                 "&scope=profile_nickname,account_email";
-        
+
         return ResponseEntity.ok(Map.of("url", kakaoAuthUrl));
     }
     

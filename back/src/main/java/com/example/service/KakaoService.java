@@ -26,13 +26,13 @@ public class KakaoService {
     private final TokenService tokenService;
     private final WebClient webClient;
     
-    @Value("${spring.security.oauth2.client.registration.kakao.client-id}")
+    @Value("${KAKAO_CLIENT_ID}")
     private String kakaoClientId;
-    
-    @Value("${spring.security.oauth2.client.registration.kakao.client-secret}")
+
+    @Value("${KAKAO_CLIENT_SECRET}")
     private String kakaoClientSecret;
-    
-    @Value("${spring.security.oauth2.client.registration.kakao.redirect-uri}")
+
+    @Value("${KAKAO_REDIRECT_URI}")
     private String kakaoRedirectUri;
     
     /**
@@ -141,12 +141,13 @@ public class KakaoService {
     }
     
     private String extractEmail(KakaoUserInfo kakaoUserInfo) {
-        if (kakaoUserInfo.getKakaoAccount() != null && 
+        if (kakaoUserInfo.getKakaoAccount() != null &&
             kakaoUserInfo.getKakaoAccount().getEmail() != null) {
             return kakaoUserInfo.getKakaoAccount().getEmail();
         }
-        // 이메일이 없으면 카카오 ID로 임시 이메일 생성
-        return "kakao_" + kakaoUserInfo.getId() + "@kakao.user";
+        // 이메일이 없으면 닉네임을 기반으로 이메일 생성
+        String nickname = extractNickname(kakaoUserInfo);
+        return nickname + "@kakao.com";
     }
     
     private String extractNickname(KakaoUserInfo kakaoUserInfo) {
