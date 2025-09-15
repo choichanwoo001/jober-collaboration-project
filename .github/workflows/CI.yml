@@ -87,19 +87,17 @@ jobs:
     steps:
       # 코드 체크아웃
       - uses: actions/checkout@v4
-      # Python 3.10 환경 설정 및 캐시
+      # Python 3.10 환경 설정
       - name: Set up Python 3.10
         uses: actions/setup-python@v3
         with:
           python-version: "3.10"
-          cache: 'pip'  # pip 캐시 활성화로 설치 시간 단축
-          cache-dependency-path: ai/requirements-ci.txt  # CI용 캐시 경로
       # Python 의존성 설치 (CI용 경량 버전)
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip  # pip 최신 버전으로 업그레이드
           # CI용 경량 requirements 사용 (torch, transformers 등 제외)
-          pip install -r ai/requirements-ci.txt   # 경량 의존성 설치로 시간 단축
+          pip install --cache-dir ~/.cache/pip -r ai/requirements-ci.txt   # 경량 의존성 설치로 시간 단축
       # Python 코드 린팅 (flake8)
       - name: Lint with flake8
         run: |
