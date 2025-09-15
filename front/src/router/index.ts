@@ -69,10 +69,18 @@ router.beforeEach(async (to, from, next) => {
     })
 
     if (res.ok) {
+      const userData = await res.json()
+      // JWT 토큰에서 role 정보 추출
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      userStore.setUser({
+        accountId: userData.userId,
+        role: payload.role
+      })
       return next()
     } else if (res.status === 401) {
       window.alert("로그인이 필요한 페이지 입니다.")
       localStorage.removeItem('accessToken')
+      localStorage.removeItem('refreshToken')
       return next({ name: 'landing' })
     } else if (res.status === 403) {
       window.alert("접근 권한이 없습니다.")

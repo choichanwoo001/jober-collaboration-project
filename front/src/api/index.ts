@@ -27,6 +27,10 @@ api.interceptors.request.use(
 // 응답 인터셉터
 api.interceptors.response.use(
   (response) => {
+    // 카카오 로그인 응답에 대한 디버깅
+    if (response.config.url?.includes('/auth/kakao/login')) {
+      console.log('카카오 로그인 API 응답:', response.data)
+    }
     return response
   },
   (error) => {
@@ -63,7 +67,18 @@ export const authApi = {
 
   // 카카오 로그인 처리
   kakaoLogin: (authorizationCode: string) =>
-    api.post('/auth/kakao/login', null, { params: { code: authorizationCode } })
+    api.post('/auth/kakao/login', null, { params: { code: authorizationCode } }),
+
+  // 로그아웃
+  logout: (accessToken: string, refreshToken?: string) =>
+    api.post('/auth/logout',
+      refreshToken ? { refreshToken } : null,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    )
 }
 
 // 마이페이지 관련 API

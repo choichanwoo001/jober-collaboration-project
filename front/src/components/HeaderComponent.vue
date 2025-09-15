@@ -2,8 +2,9 @@
   import "../assets/styles/btn.css"
 
   import { useUserStore } from '@/stores/user' // Pinia/Vuex 스토어 import
-  import { useRoute } from "vue-router"
+  import { useRoute, useRouter } from "vue-router"
   import { computed } from "vue"
+  import { authApi } from '@/api'
 
   const headerMenu = [
     { id: 1, text: "마이페이지", path: "/mypage" },
@@ -12,6 +13,32 @@
 
   const userStore = useUserStore()
   const route = useRoute()
+  const router = useRouter()
+
+  // 로그아웃 처리
+  const handleLogout = async () => {
+    try {
+      const accessToken = localStorage.getItem('accessToken')
+      const refreshToken = localStorage.getItem('refreshToken')
+
+      // 백엔드에 로그아웃 요청
+      if (accessToken) {
+        await authApi.logout(accessToken, refreshToken)
+      }
+    } catch (error) {
+      console.error('로그아웃 API 호출 실패:', error)
+    } finally {
+      // 로컬 스토리지 클리어
+      localStorage.removeItem('accessToken')
+      localStorage.removeItem('refreshToken')
+
+      // 유저 스토어 클리어
+      userStore.clearUser()
+
+      // 랜딩 페이지로 이동
+      router.push('/')
+    }
+  }
 
   // 로그인, 마이페이지 진입 시 헤더 버튼 핸들링
   const visibleMenu = computed(() => {
@@ -55,6 +82,16 @@
         >
           {{ item.text }}
         </router-link>
+
+        <!-- 로그아웃 버튼 (로그인된 경우에만 표시) -->
+        <button
+          v-if="userStore.isLoggedIn"
+          @click="handleLogout"
+          class="btn btn-logout"
+          tabindex="0"
+        >
+          로그아웃
+        </button>
       </div>
     </div>
   </header>
@@ -117,5 +154,23 @@
 .header_menu{
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+
+.btn-logout {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-logout:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px);
 }
 </style>

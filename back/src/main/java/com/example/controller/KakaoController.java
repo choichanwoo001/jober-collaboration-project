@@ -64,31 +64,43 @@ public class KakaoController {
     /**
      * 카카오 OAuth2 콜백 엔드포인트
      * 카카오에서 인가코드를 리다이렉트로 보내주는 엔드포인트
-     * (실제 운영에서는 프론트엔드로 리다이렉트하여 처리)
+     * 프론트엔드로 리다이렉트하여 토큰 전달
      */
     @GetMapping("/callback")
-    public ResponseEntity<Map<String, String>> kakaoCallback(
+    public ResponseEntity<Void> kakaoCallback(
             @RequestParam("code") String authorizationCode,
             @RequestParam(value = "error", required = false) String error) {
-        
+
         if (error != null) {
             log.error("카카오 OAuth2 에러: {}", error);
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "카카오 인증 실패: " + error));
+            return ResponseEntity.status(302)
+                    .header("Location", "http://localhost:3000?error=" + error)
+                    .build();
         }
-        
+
         log.info("카카오 콜백 수신. 인가코드: {}", authorizationCode);
-        
+
         try {
             Map<String, String> tokens = kakaoService.processKakaoLogin(authorizationCode);
             log.info("카카오 콜백 처리 성공. 사용자ID: {}", tokens.get("userId"));
-            
-            // 실제 서비스에서는 프론트엔드로 리다이렉트하여 토큰 전달
-            return ResponseEntity.ok(tokens);
+
+            // 프론트엔드로 토큰 전달하여 리다이렉트
+            String redirectUrl = String.format(
+                "http://localhost:3000?accessToken=%s&refreshToken=%s&userId=%s&role=%s",
+                tokens.get("accessToken"),
+                tokens.get("refreshToken"),
+                tokens.get("userId"),
+                tokens.get("role")
+            );
+
+            return ResponseEntity.status(302)
+                    .header("Location", redirectUrl)
+                    .build();
         } catch (Exception e) {
             log.error("카카오 콜백 처리 실패", e);
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "카카오 로그인 실패: " + e.getMessage()));
+            return ResponseEntity.status(302)
+                    .header("Location", "http://localhost:3000?error=" + e.getMessage())
+                    .build();
         }
     }
 }

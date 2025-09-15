@@ -142,12 +142,14 @@ public class KakaoService {
     
     private String extractEmail(KakaoUserInfo kakaoUserInfo) {
         if (kakaoUserInfo.getKakaoAccount() != null &&
-            kakaoUserInfo.getKakaoAccount().getEmail() != null) {
+            kakaoUserInfo.getKakaoAccount().getEmail() != null &&
+            !kakaoUserInfo.getKakaoAccount().getEmail().trim().isEmpty()) {
             return kakaoUserInfo.getKakaoAccount().getEmail();
         }
-        // 이메일이 없으면 닉네임을 기반으로 이메일 생성
-        String nickname = extractNickname(kakaoUserInfo);
-        return nickname + "@kakao.com";
+
+        // 카카오에서 이메일을 제공하지 않는 경우 에러 처리
+        log.error("카카오 계정에서 이메일 정보를 가져올 수 없습니다. 사용자 ID: {}", kakaoUserInfo.getId());
+        throw new RuntimeException("카카오 계정에서 이메일 정보를 가져올 수 없습니다. 이메일 동의가 필요합니다.");
     }
     
     private String extractNickname(KakaoUserInfo kakaoUserInfo) {

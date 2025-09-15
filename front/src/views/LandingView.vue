@@ -51,7 +51,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import HeaderComponent from '@/components/HeaderComponent.vue'
 import LoginComponent from '@/components/LoginComponent.vue'
 import RegisterComponent from '@/components/RegisterComponent.vue'
@@ -59,11 +60,47 @@ import ForgotPasswordComponent from '@/components/ForgotPasswordComponent.vue'
 import "../assets/styles/btn.css"
 import { useUserStore } from '@/stores/user'
 
-
-
+const router = useRouter()
 const showForm = ref(false)
 const currentFormType = ref('login')
 const userStore = useUserStore()
+
+// 카카오 로그인 콜백 처리
+onMounted(() => {
+  const urlParams = new URLSearchParams(window.location.search)
+  const accessToken = urlParams.get('accessToken')
+  const refreshToken = urlParams.get('refreshToken')
+  const userId = urlParams.get('userId')
+  const role = urlParams.get('role')
+  const error = urlParams.get('error')
+
+  if (error) {
+    console.error('카카오 로그인 에러:', error)
+    alert('카카오 로그인에 실패했습니다: ' + error)
+    // URL에서 에러 파라미터 제거
+    router.replace({ query: {} })
+    return
+  }
+
+  if (accessToken && refreshToken && userId && role) {
+    console.log('카카오 로그인 성공, 토큰 저장 중...')
+
+    // 토큰 저장
+    localStorage.setItem('accessToken', accessToken)
+    localStorage.setItem('refreshToken', refreshToken)
+
+    // 유저 스토어 업데이트
+    userStore.setUser({
+      accountId: parseInt(userId),
+      role: role
+    })
+
+    console.log('로그인 완료, 마이페이지로 이동...')
+
+    // URL에서 토큰 파라미터 제거하고 마이페이지로 이동
+    router.replace('/mypage')
+  }
+})
 
 const currentForm = computed(() => {
   switch (currentFormType.value) {
