@@ -125,7 +125,7 @@ jobs:
             
             if [ "$FILE_COUNT" -gt 0 ]; then
               echo "✅ 테스트 파일이 있습니다. pytest 실행합니다."
-              pytest ai/tests
+              pytest ai/tests -v --tb=short
             else
               echo "⚠️ Python 테스트 파일이 없습니다. 테스트를 스킵합니다."
               exit 0
