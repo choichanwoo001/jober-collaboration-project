@@ -110,14 +110,29 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # OpenAI API 키 (테스트용)
         run: |
-          # 테스트 파일이 있는 경우에만 실행
-          if [ -d "ai/tests" ] && [ "$(find ai/tests -name "*.py" -type f | wc -l)" -gt 0 ]; then
-            pytest ai/tests
+          echo "🔍 테스트 디렉토리 확인 중..."
+          echo "현재 디렉토리: $(pwd)"
+          echo "ai/tests 디렉토리 존재: $([ -d "ai/tests" ] && echo "YES" || echo "NO")"
+          
+          if [ -d "ai/tests" ]; then
+            echo "ai/tests 디렉토리 내용:"
+            ls -la ai/tests/ || echo "디렉토리 읽기 실패"
+            
+            PYTHON_FILES=$(find ai/tests -name "*.py" -type f 2>/dev/null)
+            FILE_COUNT=$(echo "$PYTHON_FILES" | wc -l)
+            echo "Python 파일 개수: $FILE_COUNT"
+            echo "Python 파일 목록: $PYTHON_FILES"
+            
+            if [ "$FILE_COUNT" -gt 0 ]; then
+              echo "✅ 테스트 파일이 있습니다. pytest 실행합니다."
+              pytest ai/tests
+            else
+              echo "⚠️ Python 테스트 파일이 없습니다. 테스트를 스킵합니다."
+              exit 0
+            fi
           else
-            echo "⚠️ AI 테스트 파일이 없습니다. 테스트를 스킵합니다."
-            echo "테스트 디렉토리 상태:"
-            ls -la ai/tests/ 2>/dev/null || echo "ai/tests 디렉토리가 존재하지 않습니다."
-            echo "Python 테스트 파일 개수: $(find ai/tests -name '*.py' -type f 2>/dev/null | wc -l)"
+            echo "⚠️ ai/tests 디렉토리가 존재하지 않습니다. 테스트를 스킵합니다."
+            exit 0
           fi
 
   # ===================================================================
