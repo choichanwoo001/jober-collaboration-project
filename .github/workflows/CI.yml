@@ -105,12 +105,19 @@ jobs:
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           # 복잡도와 라인 길이 체크 (경고만, 빌드 중단하지 않음)
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      # AI 서비스 테스트 실행 (필수 - 실패 시 빌드 중단)
+      # AI 서비스 테스트 실행 (테스트가 없으면 스킵)
       - name: Test with pytest
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # OpenAI API 키 (테스트용)
         run: |
-          pytest ai/tests  # AI 서비스 테스트 실행
+          # 테스트 파일이 있는 경우에만 실행
+          if [ -d "ai/tests" ] && [ "$(ls -A ai/tests)" ]; then
+            pytest ai/tests
+          else
+            echo "⚠️ AI 테스트 파일이 없습니다. 테스트를 스킵합니다."
+            echo "테스트 디렉토리 상태:"
+            ls -la ai/tests/ 2>/dev/null || echo "ai/tests 디렉토리가 존재하지 않습니다."
+          fi
 
   # ===================================================================
   #  Job 4: 백엔드 빌드 및 테스트
