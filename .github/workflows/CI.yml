@@ -111,12 +111,13 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # OpenAI API 키 (테스트용)
         run: |
           # 테스트 파일이 있는 경우에만 실행
-          if [ -d "ai/tests" ] && [ "$(ls -A ai/tests)" ]; then
+          if [ -d "ai/tests" ] && [ "$(find ai/tests -name "*.py" -type f | wc -l)" -gt 0 ]; then
             pytest ai/tests
           else
             echo "⚠️ AI 테스트 파일이 없습니다. 테스트를 스킵합니다."
             echo "테스트 디렉토리 상태:"
             ls -la ai/tests/ 2>/dev/null || echo "ai/tests 디렉토리가 존재하지 않습니다."
+            echo "Python 테스트 파일 개수: $(find ai/tests -name '*.py' -type f 2>/dev/null | wc -l)"
           fi
 
   # ===================================================================
