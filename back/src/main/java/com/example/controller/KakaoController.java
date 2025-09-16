@@ -31,9 +31,15 @@ public class KakaoController {
      * 프론트엔드에서 카카오 인가코드를 받아온 후 호출하는 엔드포인트
      */
     @PostMapping("/login")
-    public ResponseEntity<Map<String, String>> kakaoLogin(@RequestParam("code") String authorizationCode) {
+    public ResponseEntity<Map<String, String>> kakaoLogin(@RequestParam(value = "code", required = false) String authorizationCode) {
         log.info("카카오 로그인 요청 수신. 인가코드: {}", authorizationCode);
-        
+
+        if (authorizationCode == null || authorizationCode.trim().isEmpty()) {
+            log.error("카카오 로그인에서 인가코드가 누락됨");
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "카카오 로그인 실패: 인가코드가 필요합니다"));
+        }
+
         try {
             Map<String, String> tokens = kakaoService.processKakaoLogin(authorizationCode);
             log.info("카카오 로그인 성공. 사용자ID: {}", tokens.get("userId"));
@@ -68,13 +74,20 @@ public class KakaoController {
      */
     @GetMapping("/callback")
     public ResponseEntity<Void> kakaoCallback(
-            @RequestParam("code") String authorizationCode,
+            @RequestParam(value = "code", required = false) String authorizationCode,
             @RequestParam(value = "error", required = false) String error) {
 
         if (error != null) {
             log.error("카카오 OAuth2 에러: {}", error);
             return ResponseEntity.status(302)
                     .header("Location", "http://134.185.106.160?error=" + error)
+                    .build();
+        }
+
+        if (authorizationCode == null || authorizationCode.trim().isEmpty()) {
+            log.error("카카오 콜백에서 인가코드가 누락됨");
+            return ResponseEntity.status(302)
+                    .header("Location", "http://134.185.106.160?error=missing_authorization_code")
                     .build();
         }
 
