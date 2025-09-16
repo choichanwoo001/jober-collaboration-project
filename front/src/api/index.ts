@@ -176,4 +176,5 @@ export const aiApiDirect = {
 
 }
 
+export { aiApi }
 export default api
