@@ -47,7 +47,6 @@ class QuestionAnswerRequest(BaseModel):
     model: Optional[str] = "deepset/roberta-base-squad2"
 
 class TemplateGenerationRequest(BaseModel):
-    category: str
     userMessage: str
     model: Optional[str] = "gpt-4o-mini"
 
@@ -191,12 +190,13 @@ async def get_available_models():
 # 템플릿 생성 라우트
 @router.post("/template/generate", response_model=TemplateGenerationResponse)
 async def generate_template(request: TemplateGenerationRequest):
+    category = "구매취소"
     """알림톡 템플릿 생성"""
     try:
         # 가이드라인 검색을 통한 컨텍스트 생성
         try:
             guidelines = await chromadb_service.search_documents(
-                f"{request.category} {request.userMessage}", 
+                f"{category} {request.userMessage}",
                 3
             )
         except Exception as e:
@@ -210,7 +210,7 @@ async def generate_template(request: TemplateGenerationRequest):
         
         # 프롬프트 빌더 사용
         prompt_builder = TemplateGenerationPromptBuilder(
-            category=request.category,
+            category=category,
             userMessage=request.userMessage,
             context=context
         )
@@ -239,7 +239,7 @@ async def generate_template(request: TemplateGenerationRequest):
         return TemplateGenerationResponse(
             template_content=template_content,
             variables=variables,
-            category=request.category,
+            category=category,
             model=request.model
         )
         
