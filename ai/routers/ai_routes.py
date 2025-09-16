@@ -10,10 +10,32 @@ from templateEngine.integrated_template_pipeline import IntegratedTemplatePipeli
 router = APIRouter(prefix="/ai", tags=["AI Services"])
 
 # 서비스 인스턴스 초기화
-openai_service = OpenAIService()
-chromadb_service = ChromaDBService()
-huggingface_service = HuggingFaceService()
-integrated_pipeline = IntegratedTemplatePipeline()
+print("AI 서비스 초기화 시작...")
+try:
+    openai_service = OpenAIService()
+    print("✅ OpenAI 서비스 초기화 완료")
+except Exception as e:
+    print(f"❌ OpenAI 서비스 초기화 실패: {e}")
+
+try:
+    chromadb_service = ChromaDBService()
+    print("✅ ChromaDB 서비스 초기화 완료")
+except Exception as e:
+    print(f"❌ ChromaDB 서비스 초기화 실패: {e}")
+
+try:
+    huggingface_service = HuggingFaceService()
+    print("✅ HuggingFace 서비스 초기화 완료")
+except Exception as e:
+    print(f"❌ HuggingFace 서비스 초기화 실패: {e}")
+
+try:
+    integrated_pipeline = IntegratedTemplatePipeline()
+    print("✅ 통합 파이프라인 초기화 완료")
+except Exception as e:
+    print(f"❌ 통합 파이프라인 초기화 실패: {e}")
+
+print("AI 서비스 초기화 완료!")
 
 # Pydantic 모델들
 class ChatRequest(BaseModel):
@@ -193,12 +215,16 @@ async def generate_template(request: TemplateGenerationRequest):
     category = "구매취소"
     """알림톡 템플릿 생성"""
     try:
+        print(f"템플릿 생성 요청 받음: {request.userMessage}")
+        
         # 가이드라인 검색을 통한 컨텍스트 생성
         try:
+            print("ChromaDB 검색 시작...")
             guidelines = await chromadb_service.search_documents(
                 f"{category} {request.userMessage}",
                 3
             )
+            print(f"ChromaDB 검색 완료: {len(guidelines.get('documents', []))}개 문서")
         except Exception as e:
             print(f"가이드라인 검색 실패: {e}")
             guidelines = {"documents": []}
@@ -209,16 +235,20 @@ async def generate_template(request: TemplateGenerationRequest):
             context = "\n".join(guidelines['documents'][:3])
         
         # 프롬프트 빌더 사용
+        print("프롬프트 빌더 초기화 중...")
         prompt_builder = TemplateGenerationPromptBuilder(
             category=category,
-            userMessage=request.userMessage,
+            user_message=request.userMessage,
             context=context
         )
         prompt = prompt_builder.build()
+        print(f"프롬프트 생성 완료 (길이: {len(prompt)}자)")
         
         # OpenAI를 통한 템플릿 생성
+        print("OpenAI API 호출 시작...")
         messages = [{"role": "user", "content": prompt}]
         response = await openai_service.chat_completion(messages, request.model)
+        print(f"OpenAI API 호출 완료 (응답 길이: {len(response)}자)")
         
         # 응답에서 템플릿과 변수 추출 (간단한 파싱)
         template_content = response
@@ -236,6 +266,7 @@ async def generate_template(request: TemplateGenerationRequest):
                 "description": f"{var} 관련 정보"
             })
         
+        print(f"템플릿 생성 완료: {len(variables)}개 변수 추출")
         return TemplateGenerationResponse(
             template_content=template_content,
             variables=variables,
@@ -244,7 +275,11 @@ async def generate_template(request: TemplateGenerationRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"템플릿 생성 중 에러 발생: {str(e)}")
+        print(f"에러 타입: {type(e).__name__}")
+        import traceback
+        print(f"에러 스택트레이스: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"템플릿 생성 실패: {str(e)}")
 
 # 템플릿 수정 라우트
 @router.post("/template/modify", response_model=TemplateModificationResponse)
