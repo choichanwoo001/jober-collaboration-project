@@ -74,7 +74,7 @@ public class KakaoController {
         if (error != null) {
             log.error("카카오 OAuth2 에러: {}", error);
             return ResponseEntity.status(302)
-                    .header("Location", "http://localhost:3000?error=" + error)
+                    .header("Location", "http://134.185.106.160?error=" + error)
                     .build();
         }
 
@@ -86,7 +86,7 @@ public class KakaoController {
 
             // 프론트엔드로 토큰 전달하여 리다이렉트
             String redirectUrl = String.format(
-                "http://localhost:3000?accessToken=%s&refreshToken=%s&userId=%s&role=%s",
+                "http://134.185.106.160?accessToken=%s&refreshToken=%s&userId=%s&role=%s",
                 tokens.get("accessToken"),
                 tokens.get("refreshToken"),
                 tokens.get("userId"),
@@ -99,7 +99,7 @@ public class KakaoController {
         } catch (Exception e) {
             log.error("카카오 콜백 처리 실패", e);
             return ResponseEntity.status(302)
-                    .header("Location", "http://localhost:3000?error=" + e.getMessage())
+                    .header("Location", "http://134.185.106.160?error=" + e.getMessage())
                     .build();
         }
     }
