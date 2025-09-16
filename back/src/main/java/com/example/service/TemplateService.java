@@ -2,10 +2,10 @@ package com.example.service;
 
 import com.example.dto.FastAPIResponseDto;
 import com.example.dto.TemplateRequestDto;
-import com.example.dto.TemplateResponseDto;
 import com.example.dto.TemplateValidationRequestDto;
 import com.example.dto.TemplateValidationResponseDto;
 import com.example.entity.*;
+import com.example.dto.UserDto;
 import com.example.exception.ResourceNotFoundException;
 import com.example.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +24,7 @@ public class TemplateService {
 
     private final TemplateRepository templateRepository;
     private final CategoryRepository categoryRepository;
+    private final AccountRepository accountRepository;
     private final AIService aiService; // FastAPI 통신을 전담할 서비스 주입
 
     /**
@@ -42,7 +43,7 @@ public class TemplateService {
      * 템플릿을 검증합니다.
      */
     @Transactional
-    public TemplateValidationResponseDto validateTemplate(TemplateValidationRequestDto requestDto, Account account) {
+    public TemplateValidationResponseDto validateTemplate(TemplateValidationRequestDto requestDto, UserDto currentUser) {
         try {
             log.info("템플릿 검증 시작: {}", requestDto.getTemplateContent().substring(0, Math.min(50, requestDto.getTemplateContent().length())));
             
@@ -58,7 +59,7 @@ public class TemplateService {
             log.info("AI 검증 결과 - 성공 여부: {}", isValid);
             
             if (isValid) {
-                return handleApproval(requestDto, account);
+                return handleApproval(requestDto, currentUser);
             }
             
             RejectionDetails rejectionDetails = extractRejectionDetails(aiValidationResult);
@@ -87,7 +88,11 @@ public class TemplateService {
         return false;
     }
 
-    private TemplateValidationResponseDto handleApproval(TemplateValidationRequestDto requestDto, Account account) {
+    private TemplateValidationResponseDto handleApproval(TemplateValidationRequestDto requestDto, UserDto currentUser) {
+        // UserDto에서 가져온 accountId로 기존 Account 엔티티 참조
+        Account account = accountRepository.findById(currentUser.getAccountId())
+                .orElseThrow(() -> new ResourceNotFoundException("사용자를 찾을 수 없습니다: " + currentUser.getAccountId()));
+        
         Template template = Template.builder()
                 .account(account)
                 .templateContent(requestDto.getTemplateContent())
@@ -201,7 +206,7 @@ public class TemplateService {
     }
 
     /**
-     * 주어진 ID로 Category2 엔티티를 조회합니다.
+     * 주어진 ID로 Category 엔티티를 조회합니다.
      * @param categoryId 조회할 Category의 ID
      * @return 조회된 Category 엔티티
      * @throws ResourceNotFoundException 해당 ID의 Category가 존재하지 않을 경우
