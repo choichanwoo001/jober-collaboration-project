@@ -1,8 +1,6 @@
 spring:
   application:
     name: final-project-backend
-  profiles:
-    active: ${SPRING_PROFILES_ACTIVE:default}
   
   # 데이터베이스 설정
   datasource:

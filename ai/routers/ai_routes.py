@@ -1,11 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+import re
 from services.openai_service import OpenAIService
 from services.chromadb_service import ChromaDBService
 from services.huggingface_service import HuggingFaceService
 from templateEngine.prompts.message_analyzer_prompts import TemplateGenerationPromptBuilder, TemplateModificationPromptBuilder
-from templateEngine.integrated_template_pipeline import IntegratedTemplatePipeline, IntegratedGenerationRequest, IntegratedGenerationResult
+from middleware.auth_middleware import get_current_user, get_current_user_id
+from templateEngine.integrated_template_pipeline import IntegratedTemplatePipeline, IntegratedGenerationRequest, IntegratedGenerationResult, clean_template_content, extract_variables_from_template
 
 router = APIRouter(prefix="/ai", tags=["AI Services"])
 
@@ -74,17 +76,20 @@ class TemplateGenerationRequest(BaseModel):
 
 class TemplateGenerationResponse(BaseModel):
     template_content: str
+    template_title: str
     variables: List[Dict[str, Any]]
     category: str
     model: str
 
 class TemplateModificationRequest(BaseModel):
     current_template: str
+    current_template_title: str
     userMessage: str
     chat_history: List[Dict[str, Any]] = []
 
 class TemplateModificationResponse(BaseModel):
     modified_template: str
+    template_title: str
     variables: List[Dict[str, Any]]
     explanation: str
     model: str
@@ -255,7 +260,6 @@ async def generate_template(request: TemplateGenerationRequest):
         variables = []
         
         # 변수 추출 ({{변수명}} 형태)
-        import re
         variable_pattern = r'\{\{([^}]+)\}\}'
         found_variables = re.findall(variable_pattern, response)
         
@@ -266,9 +270,13 @@ async def generate_template(request: TemplateGenerationRequest):
                 "description": f"{var} 관련 정보"
             })
         
+        # 템플릿 제목 생성 (사용자 메시지 기반)
+        template_title = f"{request.category} 템플릿 - {request.userMessage[:30]}..."
+        
         print(f"템플릿 생성 완료: {len(variables)}개 변수 추출")
         return TemplateGenerationResponse(
             template_content=template_content,
+            template_title=template_title,
             variables=variables,
             category=category,
             model=request.model
@@ -306,15 +314,30 @@ async def modify_template(request: TemplateModificationRequest):
         messages = [{"role": "user", "content": prompt}]
         response = await openai_service.chat_completion(messages, "gpt-4o-mini")
         
-        # 응답에서 템플릿과 변수 추출
-        modified_template = response
+        # "수정된 템플릿:" 이후의 템플릿 부분만 추출
+        template_match = re.search(r'수정된 템플릿:\s*\n?(.*?)(?:\n\n수정된 부분 설명:|수정 설명:|설명:|$)', response, re.DOTALL)
+        if template_match:
+            modified_template = template_match.group(1).strip()
+        else:
+            # 패턴이 맞지 않으면 전체 응답에서 첫 번째 줄만 사용
+            lines = response.split('\n')
+            modified_template = lines[0] if lines else response
+
+        # 추가 필터링: 설명 텍스트 제거
+        modified_template = re.split(r'(?:수정된 부분 설명:|수정 설명:|설명:)', modified_template)[0].strip()
+
+        # "수정된 템플릿:" 제거
+        modified_template = re.sub(r'^수정된 템플릿:\s*', '', modified_template)
+
+        # 마지막으로 줄바꿈 정리
+        modified_template = re.sub(r'\n+', '\n', modified_template).strip()
+
         variables = []
         
         # 변수 추출 ({{변수명}} 형태)
-        import re
         variable_pattern = r'\{\{([^}]+)\}\}'
-        found_variables = re.findall(variable_pattern, response)
-        
+        found_variables = re.findall(variable_pattern, modified_template)
+
         for var in set(found_variables):
             variables.append({
                 "name": var.strip(),
@@ -327,6 +350,7 @@ async def modify_template(request: TemplateModificationRequest):
         
         return TemplateModificationResponse(
             modified_template=modified_template,
+            template_title=request.current_template_title,
             variables=variables,
             explanation=explanation,
             model="gpt-4o-mini"

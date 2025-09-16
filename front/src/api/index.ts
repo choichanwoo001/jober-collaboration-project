@@ -137,9 +137,9 @@ export const templateApi = {
     aiApi.post('/template/generate', { userMessage }),
   
   // 템플릿 검증 (백엔드 API를 통해)
-  validateTemplate: (templateContent: string, variables: Record<string, any>, category?: string, userMessage?: string) => {
+  validateTemplate: (templateContent: string, variableList: Record<string, any>, category?: string, userMessage?: string, templateTitle?: string) => {
     // 변수 정보를 VariableDto 배열로 변환
-    const variableList = Object.entries(variables).map(([key, value]) => ({
+    const variables = Object.entries(variableList).map(([key, value]) => ({
       variableKey: key,
       variableValue: String(value)
     }))
@@ -147,10 +147,10 @@ export const templateApi = {
     // 백엔드 ValidationRequest 형식에 맞게 데이터 변환
     const validationRequest = {
       templateContent: templateContent,
-      variables: variables,
+      variableList: variables,
       category: category,
       userMessage: userMessage,
-      variableList: variableList
+      templateTitle: templateTitle
     }
     
     console.log('검증 요청 데이터:', validationRequest)
@@ -159,13 +159,23 @@ export const templateApi = {
   },
   
   // 템플릿 수정 요청 (채팅을 통한)
-  modifyTemplate: (currentTemplate: string, userMessage: string, chatHistory: any[]) => {
-    return aiApi.post('/template/modify', {
-      current_template: currentTemplate,
+  modifyTemplate: (templateContent: string, templateTitle: string, userMessage: string, variableList: Record<string, any>, category: string, chatHistory: any[]) => {
+    const variableListArray = Object.entries(variableList).map(([key, value]) => ({
+      variableKey: key,
+      variableValue: String(value)
+    }))
+    
+    const modificationRequest = {
+      templateContent: templateContent, 
+      category: category,  
       userMessage: userMessage,
-      chat_history: chatHistory
-    })
-  }
+      templateTitle: templateTitle,
+      variableList: variableListArray,
+      chatHistory: chatHistory 
+    }
+    
+    return api.post('/template/modify', modificationRequest)
+  },
 }
 
 // AI 서버 직접 호출용 API (템플릿 생성)
@@ -173,8 +183,8 @@ export const aiApiDirect = {
   // AI 서버에 직접 템플릿 생성 요청
   generateTemplate: (userMessage: string) =>
     aiApi.post('/template/generate', { userMessage: userMessage })
-
 }
 
 export { aiApi }
 export default api
+
