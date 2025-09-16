@@ -2,10 +2,10 @@ package com.example.service;
 
 import com.example.dto.FastAPIResponseDto;
 import com.example.dto.TemplateRequestDto;
-import com.example.dto.TemplateResponseDto;
 import com.example.dto.TemplateValidationRequestDto;
 import com.example.dto.TemplateValidationResponseDto;
 import com.example.entity.*;
+import com.example.dto.UserDto;
 import com.example.exception.ResourceNotFoundException;
 import com.example.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -23,21 +23,19 @@ import java.util.*;
 public class TemplateService {
 
     private final TemplateRepository templateRepository;
-    private final Category2Repository category2Repository;
+    private final CategoryRepository categoryRepository;
+    private final AccountRepository accountRepository;
     private final AIService aiService; // FastAPI 통신을 전담할 서비스 주입
 
     /**
      * AI를 활용하여 새로운 템플릿을 생성하고 연관된 변수들을 함께 저장합니다.
      */
     @Transactional
-    public TemplateResponseDto createTemplateWithAi(TemplateRequestDto requestDto, Account account) {
-        Category2 category2 = findCategory2ById(requestDto.getCategory2Id());
-        FastAPIResponseDto aiResponse = aiService.generateTemplateDataFromFastAPI(requestDto.getUserMessage());
-        Template newTemplate = Template.createFromAi(account, category2, aiResponse);
-        Template savedTemplate = templateRepository.save(newTemplate);
-        log.info("AI 템플릿 및 변수 저장 완료. Template ID: {}", savedTemplate.getTemplateId());
-
-        return TemplateResponseDto.fromEntity(savedTemplate);
+    public FastAPIResponseDto createTemplateWithAi(TemplateRequestDto requestDto) {
+        log.info("AI 템플릿 생성 요청을 AI 서버로 전달합니다. User Message: {}", requestDto.getUserMessage());
+        // AI 서버에 템플릿 생성을 요청하고, 받은 응답을 그대로 반환합니다.
+        // DB 저장 로직은 여기에서 제외됩니다.
+        return aiService.generateTemplateDataFromFastAPI(requestDto.getUserMessage());
     }
 
 
@@ -45,7 +43,7 @@ public class TemplateService {
      * 템플릿을 검증합니다.
      */
     @Transactional
-    public TemplateValidationResponseDto validateTemplate(TemplateValidationRequestDto requestDto, Account account) {
+    public TemplateValidationResponseDto validateTemplate(TemplateValidationRequestDto requestDto, UserDto currentUser) {
         try {
             log.info("템플릿 검증 시작: {}", requestDto.getTemplateContent().substring(0, Math.min(50, requestDto.getTemplateContent().length())));
             
@@ -61,16 +59,20 @@ public class TemplateService {
             log.info("AI 검증 결과 - 성공 여부: {}", isValid);
             
             if (isValid) {
-                return handleApproval(requestDto, account);
+                return handleApproval(requestDto, currentUser);
             }
             
             RejectionDetails rejectionDetails = extractRejectionDetails(aiValidationResult);
-            log.info("검증 실패, 반려된 변수: {}, 오류 정보: {}", rejectionDetails.rejectedVariables, rejectionDetails.validationErrors);
-            return TemplateValidationResponseDto.rejectionWithDetails(
+            log.info("검증 실패, 반려된 변수: {}, 오류 정보: {}, 검증 단계: {}", 
+                    rejectionDetails.rejectedVariables, rejectionDetails.validationErrors, rejectionDetails.validationStage);
+            
+            TemplateValidationResponseDto response = TemplateValidationResponseDto.rejectionWithDetails(
                     rejectionDetails.rejectedVariables,
                     rejectionDetails.alternatives,
                     rejectionDetails.validationErrors
             );
+            response.setValidationStage(rejectionDetails.validationStage);
+            return response;
             
         } catch (Exception e) {
             log.error("템플릿 검증 중 오류 발생", e);
@@ -90,11 +92,15 @@ public class TemplateService {
         return false;
     }
 
-    private TemplateValidationResponseDto handleApproval(TemplateValidationRequestDto requestDto, Account account) {
+    private TemplateValidationResponseDto handleApproval(TemplateValidationRequestDto requestDto, UserDto currentUser) {
+        // UserDto에서 가져온 accountId로 기존 Account 엔티티 참조
+        Account account = accountRepository.findById(currentUser.getAccountId())
+                .orElseThrow(() -> new ResourceNotFoundException("사용자를 찾을 수 없습니다: " + currentUser.getAccountId()));
+        
         Template template = Template.builder()
                 .account(account)
                 .templateContent(requestDto.getTemplateContent())
-                .category2(findCategory2ByName(requestDto.getCategory()))
+                .category(findCategoryByName(requestDto.getCategory()))
                 .status("APPROVED")
                 .build();
         
@@ -116,6 +122,11 @@ public class TemplateService {
     private RejectionDetails extractRejectionDetails(Map<String, Object> aiValidationResult) {
         log.info("AI 검증 실패 응답 전체: {}", aiValidationResult);
         RejectionDetails details = new RejectionDetails();
+        
+        // 검증 단계 정보 추출
+        String validationStage = extractValidationStage(aiValidationResult);
+        details.validationStage = validationStage;
+        log.info("추출된 검증 단계: {}", validationStage);
         
         if (aiValidationResult.containsKey("rejected_variables")) {
             @SuppressWarnings("unchecked")
@@ -144,9 +155,10 @@ public class TemplateService {
                         continue;
                     }
                     String validatorName = (String) result.getOrDefault("validator_name", "unknown");
+                    String stage = (String) result.getOrDefault("stage", validationStage);
                     @SuppressWarnings("unchecked")
                     List<String> errors = (List<String>) result.getOrDefault("errors", new ArrayList<>());
-                    addErrorsFromDetailsVariable(result.get("details"), validatorName, errors, details);
+                    addErrorsFromDetailsVariable(result.get("details"), validatorName, errors, details, stage);
                 }
             }
         }
@@ -162,10 +174,57 @@ public class TemplateService {
         return details;
     }
 
+    /**
+     * AI 응답에서 검증 단계 정보를 추출합니다.
+     */
+    private String extractValidationStage(Map<String, Object> aiValidationResult) {
+        // validation_results에서 stage 정보 추출
+        if (aiValidationResult.containsKey("validation_results")) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> validationResults = (List<Map<String, Object>>) aiValidationResult.get("validation_results");
+            if (validationResults != null && !validationResults.isEmpty()) {
+                for (Map<String, Object> result : validationResults) {
+                    boolean resultIsValid = (Boolean) result.getOrDefault("is_valid", true);
+                    if (!resultIsValid) {
+                        String stage = (String) result.getOrDefault("stage", "unknown");
+                        return convertStageToKorean(stage);
+                    }
+                }
+            }
+        }
+        
+        // 기본값 반환
+        return "알 수 없음";
+    }
+
+    /**
+     * 영어 단계명을 한국어로 변환합니다.
+     */
+    private String convertStageToKorean(String stage) {
+        switch (stage.toLowerCase()) {
+            case "constraint":
+                return "1차 검증";
+            case "semantic":
+                return "2차 검증";
+            case "final":
+                return "최종 검증";
+            default:
+                return "알 수 없음";
+        }
+    }
+
     private void addErrorsFromDetailsVariable(Object detailsObject,
                                               String validatorName,
                                               List<String> errors,
                                               RejectionDetails aggregate) {
+        addErrorsFromDetailsVariable(detailsObject, validatorName, errors, aggregate, null);
+    }
+
+    private void addErrorsFromDetailsVariable(Object detailsObject,
+                                              String validatorName,
+                                              List<String> errors,
+                                              RejectionDetails aggregate,
+                                              String validationStage) {
         if (!(detailsObject instanceof Map)) {
             return;
         }
@@ -182,7 +241,7 @@ public class TemplateService {
             for (String variableName : variableNames) {
                 for (String error : errors) {
                     aggregate.validationErrors.add(new TemplateValidationResponseDto.ValidationError(
-                            variableName, error, validatorName
+                            variableName, error, validatorName, validationStage
                     ));
                 }
             }
@@ -191,7 +250,7 @@ public class TemplateService {
             aggregate.rejectedVariables.add(variableName);
             for (String error : errors) {
                 aggregate.validationErrors.add(new TemplateValidationResponseDto.ValidationError(
-                        variableName, error, validatorName
+                        variableName, error, validatorName, validationStage
                 ));
             }
         }
@@ -201,27 +260,27 @@ public class TemplateService {
         private final List<String> rejectedVariables = new ArrayList<>();
         private final Map<String, List<String>> alternatives = new HashMap<>();
         private final List<TemplateValidationResponseDto.ValidationError> validationErrors = new ArrayList<>();
+        private String validationStage; // 검증 단계 정보 추가
     }
 
     /**
-     * 주어진 ID로 Category2 엔티티를 조회합니다.
-     *
-     * @param category2Id 조회할 Category2의 ID
-     * @return 조회된 Category2 엔티티
-     * @throws ResourceNotFoundException 해당 ID의 Category2가 존재하지 않을 경우
+     * 주어진 ID로 Category 엔티티를 조회합니다.
+     * @param categoryId 조회할 Category의 ID
+     * @return 조회된 Category 엔티티
+     * @throws ResourceNotFoundException 해당 ID의 Category가 존재하지 않을 경우
      */
     @Transactional(readOnly = true)
-    public Category2 findCategory2ById(Long category2Id) {
-        return category2Repository.findById(category2Id)
-                .orElseThrow(() -> new ResourceNotFoundException("Category2 not found with id: " + category2Id));
+    public Category findCategoryById(Long categoryId) {
+        return categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + categoryId));
     }
     
     /**
-     * 주어진 이름으로 Category2 엔티티를 조회합니다.
+     * 주어진 이름으로 Category 엔티티를 조회합니다.
      */
     @Transactional(readOnly = true)
-    public Category2 findCategory2ByName(String categoryName) {
-        return category2Repository.findByName(categoryName)
-                .orElseThrow(() -> new ResourceNotFoundException("Category2 not found with name: " + categoryName));
+    public Category findCategoryByName(String categoryName) {
+        return categoryRepository.findByName(categoryName)
+                .orElseThrow(() -> new ResourceNotFoundException("Category not found with name: " + categoryName));
     }
 }
