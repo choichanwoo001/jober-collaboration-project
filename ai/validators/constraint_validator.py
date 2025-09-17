@@ -16,7 +16,6 @@ import logging
 # 상대 임포트 시도 (패키지 내부에서 실행될 때) / main.py
 try:
     from ..models.alimtalk_models import ValidationResult
-    from ..services.chromadb_service import ChromaDBService
     from ..services.openai_service import OpenAIService
     from .prompts.informational_message_prompt import get_informational_message_validation_prompt
     from .prompts.standardized_template_prompt import get_standardized_template_validation_prompt
@@ -28,7 +27,6 @@ except ImportError:
     import os
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from models.alimtalk_models import ValidationResult
-    from services.chromadb_service import ChromaDBService
     from services.openai_service import OpenAIService
     from validators.prompts.informational_message_prompt import get_informational_message_validation_prompt
     from validators.prompts.standardized_template_prompt import get_standardized_template_validation_prompt
@@ -44,13 +42,9 @@ class ConstraintValidator:
     알림톡 승인 규칙을 기반으로 LLM을 활용한 동적 검증을 수행합니다.
     """
     
-    def __init__(self, vector_db_manager: ChromaDBService = None, rules_path: str = None):
+    def __init__(self):
         """
         ConstraintValidator 초기화
-        
-        Args:
-            vector_db_manager: 벡터DB 관리자 (현재 미사용)
-            rules_path: 기본 규칙 파일 경로 (현재 미사용)
         """
         try:
             self.openai_service = OpenAIService()
