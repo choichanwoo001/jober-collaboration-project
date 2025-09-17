@@ -166,39 +166,69 @@ const isGenerating = ref(false)
 
 // 정정 횟수 관리 - 세션 기반
 const maxCorrections = 3
-const remainingCorrections = ref(maxCorrections)
+const remainingCorrections = ref(maxCorrections) // 초기값을 maxCorrections로 설정, onMounted에서 세션 값으로 업데이트됨
 
 // 세션 키 생성 함수
 const getSessionKey = () => {
-  const templateId = generatedTemplate.value?.id || 'new'
-  return `template_modifications_${templateId}`
+  // 항상 'template_modifications_new'를 사용하여 일관성 보장
+  return 'template_modifications_new'
 }
 
 // 세션에서 남은 수정 횟수 가져오기
 const getRemainingModifications = () => {
-  const key = getSessionKey()
-  const storedValue = sessionStorage.getItem(key)
-  if (storedValue === null) {
-    // 세션에 값이 없으면 기본값 3 반환
+  try {
+    const key = getSessionKey()
+    const storedValue = sessionStorage.getItem(key)
+    console.log(`세션에서 ${key} 키로 가져온 값:`, storedValue)
+    
+    if (storedValue === null || storedValue === undefined) {
+      // 세션에 값이 없으면 기본값 3으로 설정하고 반환
+      console.log('세션에 값이 없어서 기본값 3으로 설정')
+      sessionStorage.setItem(key, maxCorrections.toString())
+      return maxCorrections
+    }
+    
+    const count = parseInt(storedValue, 10)
+    if (isNaN(count) || count < 0) {
+      console.log('유효하지 않은 값이므로 기본값 3으로 설정')
+      sessionStorage.setItem(key, maxCorrections.toString())
+      return maxCorrections
+    }
+    
+    console.log(`세션에서 가져온 정정 횟수: ${count}`)
+    return count
+  } catch (error) {
+    console.error('세션에서 정정 횟수를 가져오는 중 오류:', error)
+    // 오류 발생 시 기본값 반환
+    const key = getSessionKey()
+    sessionStorage.setItem(key, maxCorrections.toString())
     return maxCorrections
   }
-  const count = parseInt(storedValue)
-  return isNaN(count) ? maxCorrections : count
 }
 
 // 수정 횟수 감소
 const decrementModificationCount = () => {
-  const key = getSessionKey()
-  const currentCount = getRemainingModifications()
-  const newCount = Math.max(0, currentCount - 1)
-  sessionStorage.setItem(key, newCount.toString())
-  return newCount
+  try {
+    const key = getSessionKey()
+    const currentCount = remainingCorrections.value
+    const newCount = Math.max(0, currentCount - 1)
+    sessionStorage.setItem(key, newCount.toString())
+    return newCount
+  } catch (error) {
+    console.error('정정 횟수 감소 중 오류:', error)
+    return 0
+  }
 }
 
 // 수정 횟수 초기화 (새 템플릿 생성 시)
 const resetModificationCount = () => {
-  const key = getSessionKey()
-  sessionStorage.setItem(key, maxCorrections.toString())
+  try {
+    const key = getSessionKey()
+    sessionStorage.setItem(key, maxCorrections.toString())
+    console.log(`정정 횟수 초기화: ${maxCorrections}`)
+  } catch (error) {
+    console.error('정정 횟수 초기화 중 오류:', error)
+  }
 }
 
 // 수정 횟수 리셋 테스트 함수들 (개발자 도구에서 사용) resetModifications() -> 3으로 리셋
@@ -235,6 +265,10 @@ const editedVariables = ref<Record<string, string>>({})
 
 // 컴포넌트 마운트 시 생성된 템플릿 데이터 로드
 onMounted(() => {
+  // 먼저 수정 횟수를 세션에서 가져와서 설정
+  const sessionCorrections = getRemainingModifications()
+  remainingCorrections.value = sessionCorrections
+  
   const savedTemplate = sessionStorage.getItem('generatedTemplate')
   if (savedTemplate) {
     try {
@@ -279,6 +313,7 @@ onMounted(() => {
       ]
       
       console.log('생성된 템플릿 로드됨:', generatedTemplate.value)
+      console.log('최종 정정 횟수:', remainingCorrections.value)
     } catch (error) {
       console.error('템플릿 데이터 파싱 실패:', error)
       router.push('/')
@@ -390,10 +425,10 @@ const closeRejectionSidebar = () => {
 const updateVariables = (newVariables: any) => {
   editedVariables.value = { ...newVariables }
   
-  // 강제로 리렌더링을 위해 nextTick 사용
-  nextTick(() => {
-    console.log('변수 업데이트 완료:', newVariables)
-  })
+    // 강제로 리렌더링을 위해 nextTick 사용
+    nextTick(() => {
+      // 변수 업데이트 완료
+    })
 }
 
 // 변수 토글 상태 변경 감지
@@ -413,12 +448,6 @@ watch(chatHistory, () => {
   scrollToBottom()
 }, { deep: true })
 
-// 수정된 버전 표시
-const showModifiedVersion = () => {
-  // 여기에 수정된 버전을 보여주는 로직을 구현할 수 있습니다
-  console.log('수정된 버전 표시')
-  // 예: 모달 열기, 다른 템플릿 표시 등
-}
 
 // 템플릿 제출
 const submitTemplate = async () => {
@@ -500,8 +529,7 @@ const sendMessage = async () => {
   if (!chatInput.value.trim() || isGenerating.value) return
   
   // 수정 횟수 확인
-  const currentRemainingCount = getRemainingModifications()
-  if (currentRemainingCount <= 0) {
+  if (remainingCorrections.value <= 0) {
     alert('수정 횟수를 모두 사용했습니다. 더 이상 수정할 수 없습니다.')
     return
   }
@@ -556,13 +584,9 @@ const sendMessage = async () => {
     scrollToBottom()
     
     // 템플릿 업데이트
-    console.log('템플릿 수정 전:', templateContent.value)
     const newTemplateContent = response.data.modified_template || response.data.template_text || templateContent.value
     const templateChanged = newTemplateContent !== templateContent.value
     templateContent.value = newTemplateContent
-    console.log('템플릿 수정 후:', templateContent.value)
-    console.log('템플릿 수정 후 길이:', templateContent.value ? templateContent.value.length : 0)
-    console.log('템플릿이 변경되었는가:', templateChanged)
     // 변수 처리 - 백엔드에서 variables 필드 사용
     if (response.data.variables && Array.isArray(response.data.variables)) {
       templateVariables.value = response.data.variables.map((variable: any) => 
@@ -583,16 +607,9 @@ const sendMessage = async () => {
       })
       templateVariables.value = Array.from(found) // 문자열 배열로 변환
     }
-    console.log('템플릿 변수 업데이트:', templateVariables.value)
-    
     // 제목 업데이트 (응답에 제목이 있다면)
     if (response.data.template_title) {
-      console.log('제목 업데이트 전:', templateTitle.value)
       templateTitle.value = response.data.template_title
-      console.log('제목 업데이트 후:', templateTitle.value)
-      console.log('제목 길이:', templateTitle.value.length)
-    } else {
-      console.log('응답에 제목이 없음:', response.data)
     }
     
     // 변수 목록 업데이트: 응답 변수(없으면 파싱 결과) 기준으로 기본값 세팅
@@ -625,14 +642,12 @@ const sendMessage = async () => {
     // 새 버전을 현재 선택된 버전으로 설정
     currentVersion.value = newVersionNumber
     
-    console.log('템플릿 수정 완료:', response.data)
-    
   } catch (error) {
     console.error('템플릿 수정 실패:', error)
     
     // 오류 발생 시 수정 횟수 복원
     const key = getSessionKey()
-    const currentCount = getRemainingModifications()
+    const currentCount = remainingCorrections.value
     const restoredCount = Math.min(maxCorrections, currentCount + 1)
     sessionStorage.setItem(key, restoredCount.toString())
     remainingCorrections.value = restoredCount
@@ -660,7 +675,6 @@ const selectVersion = (versionNumber: number) => {
   }
   
   currentVersion.value = versionNumber
-  console.log(`버전 ${versionNumber} 선택됨`)
   
   // 해당 버전의 템플릿 내용으로 업데이트
   const versionTemplate = versionTemplates.value[versionNumber]
