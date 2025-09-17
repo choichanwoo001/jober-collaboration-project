@@ -99,7 +99,7 @@
                   :current-variable="currentVariable"
                   :alternatives="currentAlternatives"
                   :rejected-variables="rejectedVariables"
-                  :validation-error="currentValidationError"
+                  :validation-errors="currentVariable ? currentValidationError : validationErrors"
                   :validation-stage="validationStage"
                   @close="closeRejectionSidebar"
                   @variable-click="handleVariableClick"
@@ -289,8 +289,25 @@ const handleVariableClick = (variableName: string) => {
     currentVariable.value = variableName
     
     // 해당 변수에 대한 검증 오류 찾기
-    const variableErrors = validationErrors.value.filter(error => error.variableName === variableName)
-    currentValidationError.value = variableErrors.length > 0 ? variableErrors[0] : null
+    const variableErrors = validationErrors.value.filter(error => 
+      error.variable_name === variableName || 
+      (error.reason && error.reason.includes(variableName))
+    )
+    
+    if (variableErrors.length > 0) {
+      const error = variableErrors[0]
+      currentValidationError.value = {
+        variableName: variableName,
+        errorMessage: error.reason,
+        errorType: error.rule_type,
+        validationStage: error.stage,
+        rule: error.rule,
+        suggestion: error.suggestion,
+        severity: error.severity
+      }
+    } else {
+      currentValidationError.value = null
+    }
     
     // 대안 정보 설정 (기본값 또는 백엔드에서 받은 대안)
     currentAlternatives.value = JSON.parse(JSON.stringify(variableAlternatives[variableName as keyof typeof variableAlternatives] || []))
@@ -433,16 +450,42 @@ const submitTemplate = async () => {
       console.log('템플릿 검증 실패:', response.data.message)
       console.log('전체 검증 응답:', response.data)
       
-      // 백엔드에서 전달된 반려된 변수들 사용
-      const rejectedVars = response.data.rejectedVariables || []
-      const errors = response.data.validationErrors || []
-      const stage = response.data.validationStage || '알 수 없음'
-      console.log('반려된 변수들:', rejectedVars)
-      console.log('검증 오류 상세:', errors)
+      // 백엔드에서 전달된 상세한 검증 결과 처리
+      const validationResults = response.data.validation_results || []
+      const stage = response.data.validationStage || '1차 검증'
+      
+      console.log('검증 결과:', validationResults)
       console.log('검증 단계:', stage)
       
-      rejectedVariables.value = rejectedVars
-      validationErrors.value = errors
+      // 검증 결과에서 반려된 변수들과 상세 정보 추출
+      const rejectedVars: string[] = []
+      const detailedErrors: any[] = []
+      
+      validationResults.forEach((result: any) => {
+        if (result.details && result.details.validation_details) {
+          result.details.validation_details.forEach((detail: any) => {
+            // 변수 관련 오류인 경우 반려된 변수 목록에 추가
+            if (detail.variable_name && detail.severity === 'error') {
+              rejectedVars.push(detail.variable_name)
+            }
+            
+            // 모든 상세 오류 정보 저장
+            detailedErrors.push({
+              rule_type: detail.rule_type,
+              rule: detail.rule,
+              reason: detail.reason,
+              suggestion: detail.suggestion,
+              severity: detail.severity,
+              variable_name: detail.variable_name || null,
+              stage: result.stage || '1차 검증'
+            })
+          })
+        }
+      })
+      
+      // 중복 제거
+      rejectedVariables.value = [...new Set(rejectedVars)]
+      validationErrors.value = detailedErrors
       validationStage.value = stage
       isRejected.value = true
       showRejectionSidebar.value = true
@@ -729,12 +772,13 @@ const scrollToBottom = () => {
   display: flex;
   gap: 1rem;
   transition: transform 0.3s ease;
-  align-self: center;
-  max-height: 80vh;
+  align-self: flex-start; /* 상단 정렬 */
+  max-height: 80vh; /* 최대 높이 제한 */
   overflow: visible;
   margin-bottom: 1rem;
   width: 100%;
   justify-content: center;
+  align-items: flex-start; /* 자식 요소들을 상단 정렬 */
 }
 
 /* 반려 사이드바가 열렸을 때의 상태 */
@@ -745,10 +789,11 @@ const scrollToBottom = () => {
 /* 카카오톡 미리보기 래퍼 */
 .kakao-preview-wrapper {
   flex-shrink: 0;
-  align-self: center;
-  max-height: 80vh;
+  align-self: flex-start; /* 상단 정렬 */
+  max-height: 80vh; /* 최대 높이 제한 */
   overflow-y: auto;
   padding-right: 0.5rem;
+  min-width: 20rem; /* 최소 너비 보장 */
 }
 
 /* 스크롤바 스타일링 */
@@ -775,8 +820,10 @@ const scrollToBottom = () => {
   width: 20rem;
   min-width: 20rem;
   max-width: 20rem;
+  max-height: 80vh; /* 카카오 미리보기와 동일한 최대 높이 */
   flex-shrink: 0;
   z-index: 10;
+  align-self: flex-start; /* 상단 정렬 */
 }
 
 /* 변수값 표시 토글 */
