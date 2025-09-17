@@ -303,12 +303,14 @@ class ChromaDBService:
         except Exception:
             return
     
-    def get_collection(self, collection_name: str):
+    def get_collection(self, collection_name: str = None):
         """특정 컬렉션 가져오기"""
         if not HAS_CHROMADB or self.is_mock:
             return None
         try:
-            return self.client.get_or_create_collection(name=collection_name)
+            # collection_name이 없으면 기본 컬렉션 이름 사용
+            name = collection_name or self.collection_name
+            return self.client.get_or_create_collection(name=name)
         except Exception:
             return None
     

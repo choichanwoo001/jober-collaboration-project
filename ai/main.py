@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
+from contextlib import asynccontextmanager
 import os
 from routers import ai_routes
 # 로깅 안되서 넣음
@@ -20,10 +21,28 @@ from routers import ai_routes
 # logger = logging.getLogger(__name__)
 # logger.setLevel(logging.DEBUG)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 시작 시 실행
+    try:
+        from routers import alimtalk_routes
+        print(">>main<<")
+        print("🔧 알림톡 검증 서비스 초기화 중...")
+        await alimtalk_routes.validation_service.initialize()
+        print("✅ 알림톡 검증 서비스 초기화 완료!")
+    except Exception as e:
+        print(f"❌ 알림톡 서비스 초기화 실패: {e}")
+    
+    yield
+    
+    # 종료 시 실행 (필요한 경우)
+    print("🔄 서비스 종료 중...")
+
 app = FastAPI(
     title="AI Service API",
     description="FastAPI + ChromaDB + OpenAI + Hugging Face AI 서비스\n\n포함된 서비스:\n- 기본 AI 서비스\n- 알림톡 템플릿 검증 시스템",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS 설정
@@ -45,18 +64,6 @@ try:
     print(">>main<<")
     print("✅ 알림톡 검증 라우터 등록 완료")
     
-    # 알림톡 서비스 초기화
-    @app.on_event("startup")
-    async def initialize_alimtalk():
-        """알림톡 서비스 초기화"""
-        try:
-            print(">>main<<")
-            print("🔧 알림톡 검증 서비스 초기화 중...")
-            await alimtalk_routes.validation_service.initialize()
-            print("✅ 알림톡 검증 서비스 초기화 완료!")
-        except Exception as e:
-            print(f"❌ 알림톡 서비스 초기화 실패: {e}")
-            
 except ImportError as e:
     print(">>main<<")
     print(f"⚠️ 알림톡 검증 라우터 로드 실패: {e}")
