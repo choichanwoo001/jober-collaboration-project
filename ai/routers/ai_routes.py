@@ -305,7 +305,7 @@ async def modify_template(request: TemplateModificationRequest):
         # 프롬프트 빌더 사용
         prompt_builder = TemplateModificationPromptBuilder(
             current_template=request.current_template,
-            userMessage=request.userMessage,
+            user_message=request.userMessage,
             chat_context=chat_context
         )
         prompt = prompt_builder.build()
