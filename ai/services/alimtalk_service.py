@@ -29,7 +29,7 @@ class AlimtalkValidationService:
     """알림톡 검증 서비스"""
     
     def __init__(self):
-        self.chromadb_service = ChromaDBService()
+        self.chromadb_service = ChromaDBService(collection_name="whitelist")
         
         if HAS_OPENAI_SERVICE:
             self.openai_service = OpenAIService()
