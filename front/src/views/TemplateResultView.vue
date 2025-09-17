@@ -220,16 +220,6 @@ const decrementModificationCount = () => {
   }
 }
 
-// 수정 횟수 초기화 (새 템플릿 생성 시)
-const resetModificationCount = () => {
-  try {
-    const key = getSessionKey()
-    sessionStorage.setItem(key, maxCorrections.toString())
-    console.log(`정정 횟수 초기화: ${maxCorrections}`)
-  } catch (error) {
-    console.error('정정 횟수 초기화 중 오류:', error)
-  }
-}
 
 // 수정 횟수 리셋 테스트 함수들 (개발자 도구에서 사용) resetModifications() -> 3으로 리셋
 const testResetModifications = () => {
@@ -313,7 +303,6 @@ onMounted(() => {
       ]
       
       console.log('생성된 템플릿 로드됨:', generatedTemplate.value)
-      console.log('최종 정정 횟수:', remainingCorrections.value)
     } catch (error) {
       console.error('템플릿 데이터 파싱 실패:', error)
       router.push('/')

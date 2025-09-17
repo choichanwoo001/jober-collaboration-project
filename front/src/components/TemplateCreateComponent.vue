@@ -84,9 +84,7 @@ const handleSubmit = async () => {
     }));
     
     // 새 템플릿 생성 시 수정 횟수 초기화 (3번으로 설정)
-    const templateId = 'new' // 새 템플릿이므로 'new'로 설정
-    const sessionKey = `template_modifications_${templateId}`
-    sessionStorage.setItem(sessionKey, '3') // 3번 수정 가능
+    sessionStorage.setItem('template_modifications_new', '3')
     
     router.push({
       name: 'template-result',
