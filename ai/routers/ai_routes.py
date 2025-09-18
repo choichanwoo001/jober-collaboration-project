@@ -66,6 +66,7 @@ class TemplateModificationRequest(BaseModel):
     current_template_title: str
     userMessage: str
     chat_history: List[Dict[str, Any]] = []
+    variableList: List[str] = []
 
 class TemplateModificationResponse(BaseModel):
     modified_template: str
@@ -225,13 +226,13 @@ async def modify_template(request: TemplateModificationRequest):
         if request.chat_history:
             chat_context = "\n".join([
                 f"{msg.get('type', 'user')}: {msg.get('content', '')}" 
-                for msg in request.chat_history[-5:]  # 최근 5개 메시지만 사용
+                for msg in request.chat_history[-6:]  # 최근 6개 메시지만 사용
             ])
         
         # 프롬프트 빌더 사용
         prompt_builder = TemplateModificationPromptBuilder(
             current_template=request.current_template,
-            userMessage=request.userMessage,
+            user_message=request.userMessage,
             chat_context=chat_context
         )
         prompt = prompt_builder.build()

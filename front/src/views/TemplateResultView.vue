@@ -164,9 +164,83 @@ const currentVersion = ref(1)
 const chatHistory = ref<any[]>([])
 const isGenerating = ref(false)
 
-// 정정 횟수 관리
+// 정정 횟수 관리 - 세션 기반
 const maxCorrections = 3
-const remainingCorrections = ref(maxCorrections)
+const remainingCorrections = ref(maxCorrections) // 초기값을 maxCorrections로 설정, onMounted에서 세션 값으로 업데이트됨
+
+// 세션 키 생성 함수
+const getSessionKey = () => {
+  // 항상 'template_modifications_new'를 사용하여 일관성 보장
+  return 'template_modifications_new'
+}
+
+// 세션에서 남은 수정 횟수 가져오기
+const getRemainingModifications = () => {
+  try {
+    const key = getSessionKey()
+    const storedValue = sessionStorage.getItem(key)
+    console.log(`세션에서 ${key} 키로 가져온 값:`, storedValue)
+    
+    if (storedValue === null || storedValue === undefined) {
+      // 세션에 값이 없으면 기본값 3으로 설정하고 반환
+      console.log('세션에 값이 없어서 기본값 3으로 설정')
+      sessionStorage.setItem(key, maxCorrections.toString())
+      return maxCorrections
+    }
+    
+    const count = parseInt(storedValue, 10)
+    if (isNaN(count) || count < 0) {
+      console.log('유효하지 않은 값이므로 기본값 3으로 설정')
+      sessionStorage.setItem(key, maxCorrections.toString())
+      return maxCorrections
+    }
+    
+    console.log(`세션에서 가져온 정정 횟수: ${count}`)
+    return count
+  } catch (error) {
+    console.error('세션에서 정정 횟수를 가져오는 중 오류:', error)
+    // 오류 발생 시 기본값 반환
+    const key = getSessionKey()
+    sessionStorage.setItem(key, maxCorrections.toString())
+    return maxCorrections
+  }
+}
+
+// 수정 횟수 감소
+const decrementModificationCount = () => {
+  try {
+    const key = getSessionKey()
+    const currentCount = remainingCorrections.value
+    const newCount = Math.max(0, currentCount - 1)
+    sessionStorage.setItem(key, newCount.toString())
+    return newCount
+  } catch (error) {
+    console.error('정정 횟수 감소 중 오류:', error)
+    return 0
+  }
+}
+
+
+// 수정 횟수 리셋 테스트 함수들 (개발자 도구에서 사용) resetModifications() -> 3으로 리셋
+const testResetModifications = () => {
+  const key = getSessionKey()
+  sessionStorage.setItem(key, '3')
+  remainingCorrections.value = 3
+  console.log('✅ 수정 횟수를 3으로 리셋했습니다.')
+}
+
+const testSetModifications = (count: number) => {
+  const key = getSessionKey()
+  sessionStorage.setItem(key, count.toString())
+  remainingCorrections.value = count
+  console.log(`✅ 수정 횟수를 ${count}로 설정했습니다.`)
+}
+
+// 전역으로 노출 (개발자 도구에서 사용 가능)
+if (typeof window !== 'undefined') {
+  ;(window as any).resetModifications = testResetModifications
+  ;(window as any).setModifications = testSetModifications
+}
 
 // 버전 관리
 const versions = ref([
@@ -174,13 +248,17 @@ const versions = ref([
 ])
 
 // 각 버전의 템플릿 내용 저장
-const versionTemplates = ref<Record<number, { content: string, title: string, variables: any[] }>>({})
+const versionTemplates = ref<Record<number, { content: string, title: string, variableList: string[] }>>({})
 
 // 사용자가 수정할 수 있는 변수 값들
 const editedVariables = ref<Record<string, string>>({})
 
 // 컴포넌트 마운트 시 생성된 템플릿 데이터 로드
 onMounted(() => {
+  // 먼저 수정 횟수를 세션에서 가져와서 설정
+  const sessionCorrections = getRemainingModifications()
+  remainingCorrections.value = sessionCorrections
+  
   const savedTemplate = sessionStorage.getItem('generatedTemplate')
   if (savedTemplate) {
     try {
@@ -204,7 +282,7 @@ onMounted(() => {
       versionTemplates.value[1] = {
         content: templateContent.value,
         title: templateTitle.value,
-        variables: templateVariables.value
+        variableList: templateVariables.value
       }
       
       // 채팅 히스토리 초기화 - 템플릿 생성 시 입력한 메시지를 첫 메시지로 설정
@@ -234,17 +312,7 @@ onMounted(() => {
     router.push('/')
   }
 })
-
-
-
-// 추천 데이터
-const recommendations = ref([
-  {
-    placeholder: '이 영역을 어케 처리하지?',
-    status: 'pending'
-  }
-])
-
+ 
 // 변수별 대안 데이터
 const variableAlternatives = {
   '수신자': [
@@ -359,16 +427,14 @@ const closeRejectionSidebar = () => {
   currentValidationError.value = null
 }
 
-// 수정 기능 제거에 따라 관련 함수 삭제
-
 // 변수 업데이트
 const updateVariables = (newVariables: any) => {
   editedVariables.value = { ...newVariables }
   
-  // 강제로 리렌더링을 위해 nextTick 사용
-  nextTick(() => {
-    console.log('변수 업데이트 완료:', newVariables)
-  })
+    // 강제로 리렌더링을 위해 nextTick 사용
+    nextTick(() => {
+      // 변수 업데이트 완료
+    })
 }
 
 // 변수 토글 상태 변경 감지
@@ -376,7 +442,7 @@ watch(showVariables, (newValue) => {
   if (newValue && templateVariables.value.length > 0) {
     // 변수 토글을 활성화했을 때 변수값 설정
     const initialVariables: Record<string, string> = {}
-    templateVariables.value.forEach((variable: any) => {
+      templateVariables.value.forEach((variable: any) => {
       initialVariables[variable.name] = `${variable.name} 값`
     })
     editedVariables.value = initialVariables
@@ -388,12 +454,6 @@ watch(chatHistory, () => {
   scrollToBottom()
 }, { deep: true })
 
-// 수정된 버전 표시
-const showModifiedVersion = () => {
-  // 여기에 수정된 버전을 보여주는 로직을 구현할 수 있습니다
-  console.log('수정된 버전 표시')
-  // 예: 모달 열기, 다른 템플릿 표시 등
-}
 
 // 템플릿 제출
 const submitTemplate = async () => {
@@ -403,12 +463,9 @@ const submitTemplate = async () => {
     // 제출 전 변수 맵 보정: 비어있으면 현재 템플릿 변수로 기본값 구성
     if (!editedVariables.value || Object.keys(editedVariables.value).length === 0) {
       const fallback: Record<string, string> = {}
-      if (Array.isArray(templateVariables.value) && templateVariables.value.length > 0) {
-        templateVariables.value.forEach((variable: any) => {
-          const name = variable?.name
-          if (name) {
-            fallback[name] = `${name} 값`
-          }
+        if (Array.isArray(templateVariables.value) && templateVariables.value.length > 0) {
+          templateVariables.value.forEach((variableName: string) => {
+          fallback[variableName] = `${variableName} 값`
         })
       } else if (templateContent.value) {
         // 변수 배열이 비어 있으면 템플릿 본문에서 변수 패턴을 파싱해 기본값 구성
@@ -503,6 +560,12 @@ const submitTemplate = async () => {
 const sendMessage = async () => {
   if (!chatInput.value.trim() || isGenerating.value) return
   
+  // 수정 횟수 확인
+  if (remainingCorrections.value <= 0) {
+    alert('수정 횟수를 모두 사용했습니다. 더 이상 수정할 수 없습니다.')
+    return
+  }
+  
   const now = new Date()
   const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
   
@@ -522,15 +585,19 @@ const sendMessage = async () => {
   isGenerating.value = true
   
   try {
-    // 정정 횟수 감소
-    remainingCorrections.value--
+    // 수정 횟수 감소 (성공 시에만)
+    const newRemainingCount = decrementModificationCount()
+    remainingCorrections.value = newRemainingCount
     
     // 백엔드 API를 통해 AI 서버에 템플릿 수정 요청
+    // editedVariables를 string[] 형태로 변환
+    const variableList = Object.keys(editedVariables.value)
+    
     const response = await templateApi.modifyTemplate(
       templateContent.value,
       templateTitle.value,
       currentMessage,
-      editedVariables.value,
+      variableList,
       templateCategory.value,
       chatHistory.value
     )
@@ -549,23 +616,19 @@ const sendMessage = async () => {
     scrollToBottom()
     
     // 템플릿 업데이트
-    console.log('템플릿 수정 전:', templateContent.value)
     const newTemplateContent = response.data.modified_template || response.data.template_text || templateContent.value
     const templateChanged = newTemplateContent !== templateContent.value
     templateContent.value = newTemplateContent
-    console.log('템플릿 수정 후:', templateContent.value)
-    console.log('템플릿 수정 후 길이:', templateContent.value ? templateContent.value.length : 0)
-    console.log('템플릿이 변경되었는가:', templateChanged)
     // 변수 처리 - 백엔드에서 variables 필드 사용
     if (response.data.variables && Array.isArray(response.data.variables)) {
-      templateVariables.value = response.data.variables.map((variable: any) => ({ 
-        name: variable.name || variable 
-      }))
+      templateVariables.value = response.data.variables.map((variable: any) => 
+        variable.name || variable // 문자열 배열로 변환
+      )
     } else if (response.data.metadata && response.data.metadata.variablesDetected) {
-      templateVariables.value = response.data.metadata.variablesDetected.map((name: string) => ({ name }))
+      templateVariables.value = response.data.metadata.variablesDetected
     } else {
       // 응답 변수 비어 있으면 본문에서 파싱하여 변수 배열 생성
-      const patterns = [/\{\{([^}]+)\}\}/g, /#\{([^}]+)\}/g, /\{([^}]+)\}/g]
+      const patterns = [/\{\{([^}]+)\}\}/g, /#\{([^}]+)\}/g]
       const found = new Set<string>()
       patterns.forEach((re) => {
         let m
@@ -574,30 +637,20 @@ const sendMessage = async () => {
           if (name) found.add(name)
         }
       })
-      templateVariables.value = Array.from(found).map((name) => ({ name }))
+      templateVariables.value = Array.from(found) // 문자열 배열로 변환
     }
-    console.log('템플릿 변수 업데이트:', templateVariables.value)
-    
     // 제목 업데이트 (응답에 제목이 있다면)
     if (response.data.template_title) {
-      console.log('제목 업데이트 전:', templateTitle.value)
       templateTitle.value = response.data.template_title
-      console.log('제목 업데이트 후:', templateTitle.value)
-      console.log('제목 길이:', templateTitle.value.length)
-    } else {
-      console.log('응답에 제목이 없음:', response.data)
     }
     
     // 변수 목록 업데이트: 응답 변수(없으면 파싱 결과) 기준으로 기본값 세팅
     const rebuilt: Record<string, string> = {}
     const sourceVars = (Array.isArray(response.data.variables) && response.data.variables.length > 0)
-      ? response.data.variables
+      ? response.data.variables.map((variable: any) => variable.name || variable)
       : templateVariables.value
-    sourceVars.forEach((variable: any) => {
-      const name = variable?.name
-      if (name) {
-        rebuilt[name] = name
-      }
+    sourceVars.forEach((variableName: string) => {
+      rebuilt[variableName] = variableName
     })
     editedVariables.value = rebuilt
     
@@ -615,19 +668,21 @@ const sendMessage = async () => {
     versionTemplates.value[newVersionNumber] = {
       content: templateContent.value,
       title: templateTitle.value,
-      variables: templateVariables.value
+      variableList: templateVariables.value
     }
     
     // 새 버전을 현재 선택된 버전으로 설정
     currentVersion.value = newVersionNumber
     
-    console.log('템플릿 수정 완료:', response.data)
-    
   } catch (error) {
     console.error('템플릿 수정 실패:', error)
     
-    // 오류 발생 시 정정 횟수 복원
-    remainingCorrections.value++
+    // 오류 발생 시 수정 횟수 복원
+    const key = getSessionKey()
+    const currentCount = remainingCorrections.value
+    const restoredCount = Math.min(maxCorrections, currentCount + 1)
+    sessionStorage.setItem(key, restoredCount.toString())
+    remainingCorrections.value = restoredCount
     
     // 오류 메시지 추가
     const errorMessage = {
@@ -652,18 +707,17 @@ const selectVersion = (versionNumber: number) => {
   }
   
   currentVersion.value = versionNumber
-  console.log(`버전 ${versionNumber} 선택됨`)
   
   // 해당 버전의 템플릿 내용으로 업데이트
   const versionTemplate = versionTemplates.value[versionNumber]
   if (versionTemplate) {
     templateContent.value = versionTemplate.content
     templateTitle.value = versionTemplate.title
-    templateVariables.value = versionTemplate.variables
+    templateVariables.value = versionTemplate.variableList
     
     // 변수 값 초기화
     const initialVariables: Record<string, string> = {}
-    versionTemplate.variables.forEach((variable: any) => {
+    versionTemplate.variableList.forEach((variable: any) => {
       initialVariables[variable.name] = `${variable.name} 값`
     })
     editedVariables.value = initialVariables
