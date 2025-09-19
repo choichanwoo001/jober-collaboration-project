@@ -1,128 +1,55 @@
-from dotenv import load_dotenv
-# 환경 변수 로드
-load_dotenv()
+# main.py
+# uvicorn main:app --reload 로 실행
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-import os
-from routers import ai_routes
-# 로깅 안되서 넣음
-# import logging
+# from fastapi import FastAPI
+# from api.routes import template_routes # 👈 경로가 올바른지 확인
 #
-# logging.basicConfig(
-#     level=logging.DEBUG,  # 또는 INFO
-#     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
-#     datefmt="%Y-%m-%d %H:%M:%S"
-# )
-#
-# logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
-
-app = FastAPI(
-    title="AI Service API",
-    description="FastAPI + ChromaDB + OpenAI + Hugging Face AI 서비스\n\n포함된 서비스:\n- 기본 AI 서비스\n- 알림톡 템플릿 검증 시스템",
-    version="1.0.0"
-)
-
-# CORS 설정
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# 라우터 등록
-app.include_router(ai_routes.router)
-
-# 알림톡 검증 라우터 추가
-try:
-    from routers import alimtalk_routes
-    app.include_router(alimtalk_routes.router)
-    print(">>main<<")
-    print("✅ 알림톡 검증 라우터 등록 완료")
-    
-    # 알림톡 서비스 초기화
-    @app.on_event("startup")
-    async def initialize_alimtalk():
-        """알림톡 서비스 초기화"""
-        try:
-            print(">>main<<")
-            print("🔧 알림톡 검증 서비스 초기화 중...")
-            await alimtalk_routes.validation_service.initialize()
-            print("✅ 알림톡 검증 서비스 초기화 완료!")
-        except Exception as e:
-            print(f"❌ 알림톡 서비스 초기화 실패: {e}")
-            
-except ImportError as e:
-    print(">>main<<")
-    print(f"⚠️ 알림톡 검증 라우터 로드 실패: {e}")
-except Exception as e:
-    print(">>main<<")
-    print(f"❌ 알림톡 검증 라우터 등록 실패: {e}")
-
-# 템플릿 라우터 추가 (존재하지 않으므로 제거)
-# from routers import template_routes
+# app = FastAPI(title="AI Template Generation API")
+# # 라우터를 앱에 포함시킴.
 # app.include_router(template_routes.router)
+#
+# @app.get("/")
+# def read_root():
+#     return {"message": "AI Template Generation API is running."}
 
-# Pydantic 모델
-class ChatRequest(BaseModel):
-    message: str
-    model: Optional[str] = "gpt-4o-mini"
+# main.py
 
-class ChatResponse(BaseModel):
-    response: str
-    model: str
+from fastapi import FastAPI, Request  # 👈 Request를 추가로 import 합니다.
+from api.routes import template_routes
 
-class DocumentRequest(BaseModel):
-    content: str
-    metadata: Optional[dict] = None
+app = FastAPI(title="AI Template Generation API")
 
-class SearchRequest(BaseModel):
-    query: str
-    n_results: Optional[int] = 5
+# =================================================================
+# 👇 --- 디버깅을 위한 임시 코드 --- 👇
+# =================================================================
+@app.post("/debug-what-i-received")
+async def debug_what_i_received(request: Request):
+    """
+    클라이언트가 보낸 요청 본문(body)을 그대로 출력하고 반환하는
+    디버깅 전용 엔드포인트입니다.
+    """
+    print("\n" + "="*50)
+    print("🕵️‍♂️ /debug-what-i-received 엔드포인트 호출됨 🕵️‍♂️")
 
-# 기본 라우트
+    try:
+        body_json = await request.json()
+        print("✅ 수신된 JSON 데이터:")
+        print(body_json)
+        print("="*50 + "\n")
+        return {"status": "JSON 수신 성공", "received_data": body_json}
+    except Exception as e:
+        body_bytes = await request.body()
+        body_str = body_bytes.decode('utf-8')
+        print("❌ JSON 파싱 실패! 수신된 원시 데이터:")
+        print(body_str)
+        print(f"파싱 실패 원인: {e}")
+        print("="*50 + "\n")
+        return {"status": "JSON 파싱 실패", "raw_data": body_str}
+# =================================================================
+
+# 기존 코드는 그대로 둡니다.
+app.include_router(template_routes.router)
+
 @app.get("/")
-async def root():
-    return {"message": "AI Service is running!"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
-
-# 채팅 엔드포인트
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    try:
-        # OpenAI API 호출 (실제 구현에서는 OpenAI 클라이언트 사용)
-        response = f"AI 응답: {request.message}"
-        return ChatResponse(response=response, model=request.model)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# 문서 저장 엔드포인트
-@app.post("/documents")
-async def add_document(request: DocumentRequest):
-    try:
-        # ChromaDB에 문서 저장 (실제 구현에서는 ChromaDB 클라이언트 사용)
-        return {"message": "Document added successfully", "content": request.content}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# 검색 엔드포인트
-@app.post("/search")
-async def search_documents(request: SearchRequest):
-    try:
-        # ChromaDB에서 검색 (실제 구현에서는 ChromaDB 클라이언트 사용)
-        results = [f"검색 결과 {i+1}: {request.query}" for i in range(request.n_results)]
-        return {"query": request.query, "results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+def read_root():
+    return {"message": "AI Template Generation API is running."}

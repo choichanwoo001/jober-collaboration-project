@@ -269,6 +269,7 @@ class FieldsPromptBuilder(BasePromptBuilder):
 
 
 class CategoryPromptBuilder(BasePromptBuilder):
+    """카테고리 판단 프롬프트"""
     def __init__(self, user_text: str, category_main: str, category_sub_list: list):
         super().__init__(user_text)
         self.hints: list[dict] = []

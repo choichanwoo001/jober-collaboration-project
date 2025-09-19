@@ -32,7 +32,7 @@ class MessageAnalyzer:
 
             # 메세지 필드 추출
             logger.info("Calling extract_message_fields")
-            
+
             # 메세지 필드 추출 힌트 생성
             fields_hint = [f"""
                 [힌트 제공]
@@ -100,8 +100,8 @@ class MessageAnalyzer:
             return json.loads(content.strip())
         except json.JSONDecodeError:
             raise ValueError(f"LLM 응답이 JSON 파싱 불가: {content}")
-        
-        
+
+
     def _apply_hints(self, builder, hint: Optional[list[str]]):
         """hint 문자열 리스트를 받아 builder에 적용"""
         if not hint:
