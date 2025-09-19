@@ -10,7 +10,7 @@ def create_final_validation_prompt(
     template_data: Dict[str, Any],
     det_report_summary: Dict[str, Any], 
     rag_guidelines: List[Dict[str, Any]],
-    template_pk: str = None
+    # template_pk: str = None
 ) -> str:
     """
     최종 검증용 프롬프트 생성
@@ -19,7 +19,6 @@ def create_final_validation_prompt(
         template_data: 검증할 템플릿 데이터
         det_report_summary: 2차 검증 결과 요약
         rag_guidelines: RAG에서 가져온 가이드라인 목록
-        template_pk: 템플릿 Primary Key
         
     Returns:
         str: 완성된 프롬프트
@@ -51,8 +50,6 @@ def create_final_validation_prompt(
 - 기능적인 자동 수정(autofix.patch_body)을 제안하되, 원문의 의미는 유지한다.
 
 [user]
-# template_pk
-{template_pk or template_data.get('template_pk', template_data.get('id', 'unknown'))}
 
 # 접점 대상 템플릿(JSON)
 {json.dumps(template_data, ensure_ascii=False, indent=2)}
@@ -64,27 +61,20 @@ def create_final_validation_prompt(
 {rag_context}
 
 # 평가 기준
-- CRITICAL 0건 AND MAJOR ≤ 1건이면 passed=true, 그 외 false.
+- 정책 위반이나 문제가 발견되지 않으면 is_valid=true, 그 외 false.
+- 위반 사항이 있으면 violations 배열에 상세 정보 포함.
 
 # 출력 스키마(JSON만 출력)
 {{
-"passed": boolean,
-"summary": "string", 
+"is_valid": boolean,
 "violations": [
   {{
-    "rule_id": "string",
-    "severity": "CRITICAL|MAJOR|MINOR",
-    "evidence": "string",
     "policy_ref": "string",
-    "span": [startIndex, endIndex]
+    "reason": "string",
+    "evidence": "string"
   }}
 ],
-"autofix": {{
-  "enabled": boolean,
-  "patch_body": "string", 
-  "notes": "string"
-}},
-"policy_refs": ["string"]
+"rationale": "string"
 }}"""
 
     return prompt
@@ -95,7 +85,6 @@ def get_prompt_examples():
     
     # 예시 템플릿 데이터
     example_template = {
-        "template_pk": "TPL_20241201_001",
         "title": "주문 배송 완료 안내",
         "body": "안녕하세요 #{customer_name}님,\n\n주문하신 상품이 배송 완료되었습니다.\n주문번호: #{order_no}\n\n감사합니다.",
         "variables": {
@@ -130,8 +119,7 @@ def get_prompt_examples():
     return {
         "template_data": example_template,
         "det_report_summary": example_det_report,
-        "rag_guidelines": example_guidelines,
-        "template_pk": "TPL_20241201_001"
+        "rag_guidelines": example_guidelines
     }
 
 
