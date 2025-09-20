@@ -10,11 +10,11 @@ from services.openai_service import OpenAIService
 from services.chromadb_service import ChromaDBService
 from templateEngine.pipeline import run_template_generation_pipeline
 
-router = APIRouter(prefix="/ai/template", tags=["Template Generation"])
+router = APIRouter(prefix="/template", tags=["Template Generation"])
 
 # --- Pydantic 모델 ---
 class GenerationRequest(BaseModel):
-    user_text: str
+    userMessage: str
 
 class GenerationResponse(BaseModel):
     pipeline_success: bool
@@ -28,7 +28,7 @@ class GenerationResponse(BaseModel):
     category_analysis: Optional[Dict]
     similarity_score: float
     reference_templates: List[Dict]
-    public_templates: List[Dict]
+    pulblic_templates: List[Dict]
 
 # --- 최종 API 엔드포인트 ---
 @router.post("/generate", response_model=GenerationResponse)
@@ -37,13 +37,18 @@ async def generate_template_endpoint(
         openai_service: OpenAIService = Depends(get_openai_service),
         chromadb_service: ChromaDBService = Depends(get_chromadb_service)
 ):
+    """
+    LangGraph 기반의 지능형 템플릿 생성 파이프라인을 실행합니다.
+    """
     try:
         result = await run_template_generation_pipeline(
-            user_text=request.user_text,
+            userMessage=request.userMessage,
             category_sub_list=APPROVED_SUB_CATEGORIES,
             openai_service=openai_service,
             chromadb_service=chromadb_service
         )
-        return result
+        return GenerationResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"API 엔드포인트 오류: {str(e)}")
+
+

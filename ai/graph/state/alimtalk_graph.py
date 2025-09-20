@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import TypedDict, List, Literal, Optional, Dict
+from typing import TypedDict, List, Literal, Optional, Dict, Any
 from templateEngine.message_analyzer import MessageAnalyzer
 from templateEngine.template_generator import TemplateGenerator
 from langgraph.graph import StateGraph, END
@@ -22,7 +22,7 @@ class TemplateGenerationState(TypedDict):
     LangGraph 상태 정의 클래스
 
     Attributes:
-        user_text(str): 사용자 작성 프롬프트
+        userMessage(str): 사용자 작성 프롬프트
         question_idx(int): 현재 노드가 이동한 위치
         task_types(str): 질문 의도
         table_columns(List[str]): 키워드와 매핑된 테이블의 컬럼들
@@ -40,19 +40,19 @@ class TemplateGenerationState(TypedDict):
         error_message(str): 에러 메세지
         start_time(float): 작업 시작 시간
     """
-    user_text: str
+    userMessage: str # 👈 userMessage 사용
     category_sub_list: List[str]
-    analyzer: "MessageAnalyzer"
-    generator: "TemplateGenerator"
-    # 각 단계에서 채워지는 값
-    message_type: Optional[str]
-    category_sub: Optional[str]
+    openai_service: OpenAIService
+    chromadb_service: ChromaDBService
+    message_type_result: Optional[Dict]
+    category_result: Optional[Dict]
+    generated_title: Optional[str]
     similar_templates: List[Dict]
-    similarity_score: float
+    max_similarity: float
+    pulblic_templates: List[Dict] # 👈 pulblic_templates 사용
     generation_hint: Optional[str]
-    generated_title: str
     generated_template: str
-    # 최종 결과
+    extracted_fields: Optional[Dict[str, Any]]
     final_result: Dict
 
 # --- LangGraph 노드(단계) 정의 ---
@@ -85,7 +85,7 @@ async def title_and_category_parallel(state: TemplateGenerationState) -> Templat
 async def classify_message_type(state: TemplateGenerationState) -> TemplateGenerationState:
     logger.info("--- 1. 메시지 유형 분류 시작 ---")
     analyzer = state["analyzer"]
-    result = await analyzer.classify_message_type(state["user_text"])  # await 필수
+    result = await analyzer.classify_message_type(state["userMessage"])  # await 필수
     state["message_type"] = result.get("type")
     logger.info(f"결과: {state['message_type']}")
     return state
@@ -95,14 +95,14 @@ async def classify_message_type(state: TemplateGenerationState) -> TemplateGener
 #     logger.info("--- 2. 제목 생성 및 카테고리 분류 시작 ---")
 #
 #     # 제목 생성
-#     title_prompt = build_prompt(task_type="title", user_text=state["user_text"])
+#     title_prompt = build_prompt(task_type="title", userMessage=state["userMessage"])
 #     state["generated_title"] = openai_service.chat_completion(title_prompt)
 #     logger.info(f"생성된 제목: {state['generated_title']}")
 #
 #     # 카테고리 분류
 #     category_prompt = build_prompt(
 #         task_type="category",
-#         user_text=state["user_text"],
+#         userMessage=state["userMessage"],
 #         category_main=state["category_main"],
 #         category_sub_list=state["category_sub_list"]
 #     )
@@ -124,7 +124,7 @@ def search_approved_templates(state: TemplateGenerationState) -> TemplateGenerat
         return state
 
     results = generator.search_similar_templates(
-        query_text=state["user_text"],
+        query_text=state["userMessage"],
         category_sub=state["category_sub"],
         top_k=1
     )
@@ -162,15 +162,15 @@ def add_generation_hint(state: TemplateGenerationState) -> TemplateGenerationSta
 def generate_final_template(state: TemplateGenerationState) -> TemplateGenerationState:
     logger.info("--- 6. 최종 템플릿 생성 시작 ---")
     generator = state["generator"]
-    user_text = state["user_text"]
+    userMessage = state["userMessage"]
     hint = state.get("generation_hint")
 
     if hint:
         logger.info("참고 템플릿 기반 생성")
-        state["generated_template"] = generator.generate_template_with_reference(user_text, hint)
+        state["generated_template"] = generator.generate_template_with_reference(userMessage, hint)
     else:
         logger.info("신규 템플릿 생성")
-        state["generated_template"] = generator.generate_new_template(user_text)
+        state["generated_template"] = generator.generate_new_template(userMessage)
 
     logger.info("최종 템플릿 생성 완료.")
 
@@ -220,7 +220,7 @@ app = workflow.compile()
 if __name__ == "__main__":
     # 사용자 입력 예시
     user_input = {
-        "user_text": "안녕하세요 라이언님, 주문하신 상품이 정상적으로 접수되었습니다. 주문번호는 12345입니다.",
+        "userMessage": "안녕하세요 라이언님, 주문하신 상품이 정상적으로 접수되었습니다. 주문번호는 12345입니다.",
         "category_main": "주문",
         "category_sub_list": [
             "구매완료", "구매취소", "기타", "뉴스레터", "리마인드", "방문서비스",

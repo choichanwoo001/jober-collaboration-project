@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Optional, Tuple
 import chromadb
 from chromadb.config import Settings
 from chromadb.utils import embedding_functions
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import openai
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -25,15 +25,14 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-from templateEngine.prompts.message_analyzer_prompts import (
+from templateEngine.prompts.builders import (
     ReferenceBasedTemplatePromptBuilder,
-    PolicyGuidedTemplatePromptBuilder,
     NewTemplatePromptBuilder,
     TemplateTitlePromptBuilder
 )
 
 # 환경 변수 로드
-load_dotenv()
+# load_dotenv()
 
 # OpenAI API 설정
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -44,7 +43,7 @@ class TemplateRequest(BaseModel):
     category_main: str
     category_sub: str
     type: str
-    user_text: str  # 사용자 입력 텍스트 추가
+    userMessage: str  # 사용자 입력 텍스트 추가
     has_channel_link: bool = False
     has_extra_info: bool = False
     label: Optional[str] = None
@@ -117,8 +116,8 @@ class TemplateGenerator:
 
         try:
             # approved 컬렉션 가져오기
-            logger.debug("📚 'approved' 컬렉션 가져오는 중...")
-            collection = self.client.get_collection('approved')
+            logger.debug("📚 'approved_template' 컬렉션 가져오는 중...")
+            collection = self.client.get_collection('approved_template')
 
             # 카테고리 필터링을 위한 where 조건 구성
             where_filter = {}
@@ -199,7 +198,7 @@ class TemplateGenerator:
 {reference_context}
 
 === 새 템플릿 생성 요청 ===
-사용자 입력: {request.user_text}
+사용자 입력: {request.userMessage}
 1차 카테고리: {request.category_main}
 2차 카테고리: {request.category_sub}
 메시지 유형: {request.type}
@@ -272,31 +271,31 @@ class TemplateGenerator:
         except Exception as e:
             print(f"정책 가이드라인 검색 오류: {e}")
             return []
-
-    def generate_template_with_policy_guidelines(self, request: TemplateRequest, guidelines: List[Dict]) -> str:
-        """정책 가이드라인을 참고하여 템플릿 생성"""
-        try:
-            guidelines_text = "\n".join([g['text'] for g in guidelines])
-
-            # 프롬프트 빌더 사용
-            prompt_builder = PolicyGuidedTemplatePromptBuilder(request, guidelines_text)
-            prompt = prompt_builder.build()
-
-            response = openai.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "당신은 카카오톡 알림톡 정책 전문가입니다. 정책 가이드라인을 완벽히 준수하는 템플릿만 생성합니다. 절대 변수 목록이나 변수 설명을 템플릿 내용에 포함하지 마세요."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2,  # 정책 준수를 위해 더 낮은 온도
-                max_completion_tokens=1000
-            )
-
-            return response.choices[0].message.content.strip()
-
-        except Exception as e:
-            print(f"정책 기반 템플릿 생성 오류: {e}")
-            return self.generate_new_template(request)
+    # 생성 템프릿엔 승인된 템플릿만 참고함
+    # def generate_template_with_policy_guidelines(self, request: TemplateRequest, guidelines: List[Dict]) -> str:
+    #     """정책 가이드라인을 참고하여 템플릿 생성"""
+    #     try:
+    #         guidelines_text = "\n".join([g['text'] for g in guidelines])
+    #
+    #         # 프롬프트 빌더 사용
+    #         prompt_builder = PolicyGuidedTemplatePromptBuilder(request, guidelines_text)
+    #         prompt = prompt_builder.build()
+    #
+    #         response = openai.chat.completions.create(
+    #             model="gpt-4o-mini",
+    #             messages=[
+    #                 {"role": "system", "content": "당신은 카카오톡 알림톡 정책 전문가입니다. 정책 가이드라인을 완벽히 준수하는 템플릿만 생성합니다. 절대 변수 목록이나 변수 설명을 템플릿 내용에 포함하지 마세요."},
+    #                 {"role": "user", "content": prompt}
+    #             ],
+    #             temperature=0.2,  # 정책 준수를 위해 더 낮은 온도
+    #             max_completion_tokens=1000
+    #         )
+    #
+    #         return response.choices[0].message.content.strip()
+    #
+    #     except Exception as e:
+    #         print(f"정책 기반 템플릿 생성 오류: {e}")
+    #         return self.generate_new_template(request)
 
     def generate_new_template(self, request: TemplateRequest) -> str:
         """완전히 새로운 템플릿 생성"""
@@ -371,7 +370,7 @@ class TemplateGenerator:
             # 3단계: RAG 검색 (Top 3 → 2개 선택)
             print("3️⃣ RAG 검색 중...")
             similar_templates, max_similarity = self.search_similar_templates(
-                request.user_text,
+                request.userMessage,
                 request.category_main,
                 request.category_sub,
                 top_k=3,

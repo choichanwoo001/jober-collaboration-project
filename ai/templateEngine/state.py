@@ -4,7 +4,7 @@ from services.chromadb_service import ChromaDBService
 from services.openai_service import OpenAIService
 class TemplateGenerationState(TypedDict):
     # 입력
-    user_text: str
+    userMessage: str
     category_sub_list: List[str]
 
     # 서비스 객체

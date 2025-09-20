@@ -5,28 +5,28 @@ import os
 from typing import Optional
 
 from services.openai_service import OpenAIService
-from templateEngine.prompts.message_analyzer_prompts import TypePromptBuilder, CategoryPromptBuilder, FieldsPromptBuilder
-from dotenv import load_dotenv
+from templateEngine.prompts.builders import TypePromptBuilder, CategoryPromptBuilder, FieldsPromptBuilder
+# from dotenv import load_dotenv
 
-load_dotenv()
+# load_dotenv()
 logger = logging.getLogger(__name__)
 
 class MessageAnalyzer:
     def __init__(self, service: OpenAIService):
         self.service = service
 
-    async def analyze_message(self, user_text: str, category_main: str, category_sub_list: list):
+    async def analyze_message(self, userMessage: str, category_main: str, category_sub_list: list):
         """
         메시지 유형, 카테고리, 필드 추출 결과를 합쳐서 반환한다.
         """
         logger.info("Starting analyze_message")
-        logger.debug(f"[INPUT] user_text={user_text}, category_main={category_main}, category_sub={category_sub_list}")
+        logger.debug(f"[INPUT] userMessage={userMessage}, category_main={category_main}, category_sub={category_sub_list}")
 
         try:
             # 📌 변경 부분 메시지 유형, 카테고리를 병렬 처리
             type_result, category_result = await asyncio.gather(
-                self.classify_message_type(user_text),
-                self.classify_message_category(user_text, category_main, category_sub_list)
+                self.classify_message_type(userMessage),
+                self.classify_message_category(userMessage, category_main, category_sub_list)
             )
             logger.debug(f"[RESULT] type={type_result}, category={category_result}")
 
@@ -41,7 +41,7 @@ class MessageAnalyzer:
 
                 위 힌트를 참고하여 본문에서 필드를 더 정확하게 추출하라.
             """]
-            extract_result = await self.extract_message_fields(user_text, fields_hint)
+            extract_result = await self.extract_message_fields(userMessage, fields_hint)
             logger.debug(f"[RESULT] extract_message_fields={extract_result}")
 
             # dict 합치기 (중복 키 있으면 extract_result 우선)
@@ -59,11 +59,11 @@ class MessageAnalyzer:
             logger.exception(e)
             raise
 
-    async def classify_message_type(self, user_text: str, hint: Optional[list[str]] = None):
+    async def classify_message_type(self, userMessage: str, hint: Optional[list[str]] = None):
         """
         메시지 유형을 판단하는 메서드.
         """
-        prompt_builder = TypePromptBuilder(user_text)
+        prompt_builder = TypePromptBuilder(userMessage)
         self._apply_hints(prompt_builder, hint)
         prompt = prompt_builder.build()
         content = await self.service.chat_completion(prompt, model=os.getenv('OPENAI_MODEL', None))
@@ -73,11 +73,11 @@ class MessageAnalyzer:
         except json.JSONDecodeError:
             raise ValueError(f"LLM 응답이 JSON 파싱 불가: {content}")
 
-    async def classify_message_category(self, user_text: str, category_main: str, category_sub_list: list, hint: Optional[list[str]] = None):
+    async def classify_message_category(self, userMessage: str, category_main: str, category_sub_list: list, hint: Optional[list[str]] = None):
         """
         메시지 카테고리를 판단하는 메서드.
         """
-        prompt_builder = CategoryPromptBuilder(user_text, category_main, category_sub_list)
+        prompt_builder = CategoryPromptBuilder(userMessage, category_main, category_sub_list)
         self._apply_hints(prompt_builder, hint)
         prompt = prompt_builder.build()
         content = await self.service.chat_completion(prompt, model=os.getenv('OPENAI_MODEL', None))
@@ -87,11 +87,11 @@ class MessageAnalyzer:
         except json.JSONDecodeError:
             raise ValueError(f"LLM 응답이 JSON 파싱 불가: {content}")
 
-    async def extract_message_fields(self, user_text: str, hint: Optional[list[str]] = None):
+    async def extract_message_fields(self, userMessage: str, hint: Optional[list[str]] = None):
         """
         메시지에서 필드를 뽑아내는 메서드.
         """
-        prompt_builder = FieldsPromptBuilder(user_text)
+        prompt_builder = FieldsPromptBuilder(userMessage)
         self._apply_hints(prompt_builder, hint)
         prompt = prompt_builder.build()
         content = await self.service.chat_completion(prompt, model=os.getenv('OPENAI_MODEL', None))

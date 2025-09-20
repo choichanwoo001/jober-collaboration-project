@@ -1,9 +1,7 @@
-# template_engine/pipeline.py
+# templateEngine/pipeline.py
 
-import logging
+import asyncio
 from typing import Dict, List
-from langgraph.graph import StateGraph, END
-
 from .state import TemplateGenerationState
 from .nodes import (
     classify_message_type_node,
@@ -17,6 +15,8 @@ from .nodes import (
 )
 from services.openai_service import OpenAIService
 from services.chromadb_service import ChromaDBService
+from langgraph.graph import StateGraph, END
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +37,7 @@ async def create_pipeline() -> StateGraph:
     workflow.add_conditional_edges(
         "extract_fields",
         decide_generation_method,
-        {
-            "with_reference": "generate_with_reference",
-            "search_public": "search_public_and_generate"
-        }
+        {"with_reference": "generate_with_reference", "search_public": "search_public_and_generate"}
     )
     workflow.add_edge("generate_with_reference", "finalize_result")
     workflow.add_edge("search_public_and_generate", "finalize_result")
@@ -49,20 +46,42 @@ async def create_pipeline() -> StateGraph:
     return workflow.compile()
 
 async def run_template_generation_pipeline(
-        user_text: str,
+        userMessage: str,
         category_sub_list: List[str],
-        openai_service: OpenAIService,
-        chromadb_service: ChromaDBService
+        openai_service: OpenAIService, # 👈 의존성 주입으로 받음
+        chromadb_service: ChromaDBService # 👈 의존성 주입으로 받음
 ) -> Dict:
+    """템플릿 생성 파이프라인 실행 및 예외 처리"""
+    logger.info("=" * 80)
+    logger.info("카카오 알림톡 템플릿 생성 파이프라인 시작")
     try:
         app = await create_pipeline()
+        """
+        initial_state
+        - 파이프라인 처리용 내부 컨테이너
+        - 파이프라인 각 단계에서 데이터가 오가고 누적되는 임시 컨테이너 역할
+        - 최종적으로 사용자에게 반환할 데이터(GenerationResponse)보다 더 많은 정보가 들어있어도 문제 없음.
+        """
         initial_state = {
-            "user_text": user_text,
+            "userMessage": userMessage,
             "category_sub_list": category_sub_list,
             "openai_service": openai_service,
             "chromadb_service": chromadb_service,
+            "message_type_result": None,
+            "category_result": None,
+            "generated_title": None,
+            "similar_templates": [],
+            "max_similarity": 0.0,
+            "pulblic_templates": [],
+            "generation_hint": None,
+            "generated_template": "",
+            "extracted_fields": {},
+            "final_result": {}
         }
+        logger.info("파이프라인 실행 시작")
         final_state = await app.ainvoke(initial_state)
+        logger.info("=" * 80)
+        logger.info("파이프라인 실행 완료!")
         return final_state.get("final_result", {})
     except Exception as e:
         logger.error(f"❌ 파이프라인 전체 실행 실패: {e}", exc_info=True)
@@ -72,5 +91,5 @@ async def run_template_generation_pipeline(
             "template_text": "", "template_title": "생성 실패", "variables": [],
             "generation_method": "error", "message_type": None, "category_sub": None,
             "category_analysis": None, "similarity_score": 0.0,
-            "reference_templates": [], "public_templates": [],
+            "reference_templates": [], "pulblic_templates": [],
         }

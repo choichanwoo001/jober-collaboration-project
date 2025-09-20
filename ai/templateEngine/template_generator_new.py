@@ -53,7 +53,7 @@ class TemplateRequest(BaseModel):
     section_path: List[str] = []
     source: Optional[str] = None
     source_tag: Optional[str] = None
-    user_text: str                       # 원본 사용자 메시지 (유사도 검색용)
+    userMessage: str                       # 원본 사용자 메시지 (유사도 검색용)
 
 class TemplateResponse(BaseModel):
     """템플릿 생성 응답 모델"""
@@ -196,7 +196,7 @@ class TemplateGenerator:
 {reference_context}
 
 === 새 템플릿 생성 요청 ===
-사용자 입력: {request.user_text}
+사용자 입력: {request.userMessage}
 1차 카테고리: {request.category_main}
 2차 카테고리: {request.category_sub}
 메시지 유형: {request.type}
@@ -368,7 +368,7 @@ class TemplateGenerator:
             # 3단계: RAG 검색 (Top 3 → 2개 선택)
             print("3️⃣ RAG 검색 중...")
             similar_templates, max_similarity = self.search_similar_templates(
-                request.user_text,
+                request.userMessage,
                 request.category_main,
                 request.category_sub,
                 top_k=3,

@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
 from datetime import datetime
-from graph.state.alimtalk_graph import TemplateGenerationState
+
 
 class BasePromptBuilder(ABC):
     """기본 프롬프트 빌더"""
-    def __init__(self, user_text: str):
-        self.user_text = user_text
+    def __init__(self, userMessage: str):
+        self.userMessage = userMessage
         self.hints: List[Dict] = []
 
     def add_hint(self, description: str, content: str):
@@ -28,7 +28,7 @@ class FieldsPromptBuilder(BasePromptBuilder):
         today_str = datetime.now().strftime('%Y-%m-%d')
         system_prompt = """
 당신은 텍스트에서 변수를 추출하고 정제하는 '데이터 엔지니어'입니다.
-주어진 본문과 오늘 날짜를 참고하여, 고객별로 달라지는 정보를 찾아, 아래 규칙에 따라 변수로 추출하세요.
+주어진 본문에서 고객별로 달라지는 **모든 정보(이름, 날짜, 주문번호, 금액, 전화번호, 상품명 등)**를 찾아 변수로 추출해야 합니다.
 
 **오늘 날짜: {today_str}**
 
@@ -39,11 +39,13 @@ class FieldsPromptBuilder(BasePromptBuilder):
     - **영문 소문자**와 **스네이크 케이스(snake_case)**만 사용해야 합니다. (예: `order_id`, `product_name`)
     - 고객 이름("김철수님", "고객님")은 예외 없이 **`customer_name`**으로 통일합니다.
     - 도착 예정일은 **`arrival_date`**로 명명합니다.
-3.  날짜는 `date`, 금액은 `amount`, 주문번호는 `order_id`와 같이 일반적이고 예측 가능한 이름을 사용하세요.
+    - 전화번호는 **`phone_number`**로 명명합니다.
+    - 날짜는 `date`, 금액은 `amount`, 주문번호는 `order_id`와 같이 일반적이고 예측 가능한 이름을 사용하세요.
+3.  **추출 대상:** 이름, 날짜, 시간, 금액, 주문번호, 상품명, 전화번호, 주소 등 개인화될 수 있는 모든 정보를 빠짐없이 추출해야 합니다.
 
 **출력 형식:**
 - 추출된 값과 그에 해당하는 변수명을 JSON 형식으로 매핑하세요.
-- 변수화할 필드가 없으면 빈 JSON 객체 `{}`를 반환하세요.
+- **변수화할 필드가 전혀 없으면, 반드시 빈 JSON 객체 `{}`를 반환하세요.**
 
 **완벽한 예시 1:**
 - 본문: "김철수님, 주문번호 ORD-123이 50,000원 결제 완료되었습니다."
@@ -61,176 +63,92 @@ class FieldsPromptBuilder(BasePromptBuilder):
 {{
     "arrival_date": "2024-01-16"
 }}
+
+**완벽한 예시 3:**
+- 본문: "장수돌침대 사전점검 문의는 1599-9988로 연락주세요."
+- 응답: 
+{{
+    "phone_number": "1599-9988"
+}}
 """
         messages = [
             {"role": "system", "content": system_prompt},
             *self._build_hint_messages(), # 힌트가 있다면 여기에 추가됨
-            {"role": "user", "content": f"분석할 본문:\n{self.user_text}"}
+            {"role": "user", "content": f"분석할 본문:\n{self.userMessage}"}
         ]
         return messages
 
 class CategoryPromptBuilder(BasePromptBuilder):
     """카테고리 분류 프롬프트 빌더 - 적합성 판단 기능 추가"""
-    def __init__(self, user_text: str, category_sub_list: List[str]):
-        super().__init__(user_text)
+    def __init__(self, userMessage: str, category_sub_list: List[str]):
+        super().__init__(userMessage)
         self.category_sub_list = category_sub_list
 
     def build(self) -> List[Dict]:
         system_prompt = f"""
-당신은 카카오 알림톡 카테고리 분류 전문가입니다.
-주어진 메시지를 분석하여, 아래 '서브 카테고리 후보' 중 가장 적합한 것을 선택하세요.
-
-서브 카테고리 후보:
-{', '.join(self.category_sub_list)}
-
-중요: 만약 후보 중에 적합한 카테고리가 **없다고 판단되면**, "is_appropriate" 값을 false로 설정하고 그 이유를 명확히 설명해주세요.
-
-JSON 형식으로 응답하세요:
-{{
-    "is_appropriate": true,
-    "category_sub": "선택된 서브 카테고리",
-    "confidence": 85,
-    "selection_reason": "최종 선택 근거 상세 설명"
-}}
-// 또는, 적합한 것이 없을 경우:
-{{
-    "is_appropriate": false,
-    "category_sub": null,
-    "confidence": 30,
-    "selection_reason": "예: '사전 점검 및 AS 안내'는 단순 '방문서비스'나 '이용안내'와는 성격이 달라 적합한 후보가 없습니다."
-}}
-"""
+            당신은 카카오 알림톡 카테고리 분류 전문가입니다.
+            주어진 메시지를 분석하여, 아래 '서브 카테고리 후보' 중 가장 적합한 것을 선택하세요.
+            
+            서브 카테고리 후보:
+            {', '.join(self.category_sub_list)}
+            
+            중요: 만약 후보 중에 적합한 카테고리가 **없다고 판단되면**, "is_appropriate" 값을 false로 설정하고 그 이유를 명확히 설명해주세요.
+            
+            JSON 형식으로 응답하세요:
+            {{
+                "is_appropriate": true,
+                "category_sub": "선택된 서브 카테고리",
+                "confidence": 85,
+                "selection_reason": "최종 선택 근거 상세 설명"
+            }}
+            // 또는, 적합한 것이 없을 경우:
+            {{
+                "is_appropriate": false,
+                "category_sub": null,
+                "confidence": 30,
+                "selection_reason": "예: '사전 점검 및 AS 안내'는 단순 '방문서비스'나 '이용안내'와는 성격이 달라 적합한 후보가 없습니다."
+            }}
+            """
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"분석할 메시지:\n{self.user_text}"}
+            {"role": "user", "content": f"분석할 메시지:\n{self.userMessage}"}
         ]
         return messages
 
 
 class NewCategoryPromptBuilder(BasePromptBuilder):
     """신규 카테고리 생성 프롬프트 빌더"""
-    def __init__(self, user_text: str, existing_categories: List[str]):
-        super().__init__(user_text)
+    def __init__(self, userMessage: str, existing_categories: List[str]):
+        super().__init__(userMessage)
         self.existing_categories = existing_categories
 
     def build(self) -> List[Dict]:
         system_prompt = f"""
-당신은 카테고리 네이밍 전문가입니다.
-다음 메시지 내용의 핵심을 가장 잘 나타내는 새로운 카테고리명을 1개 생성해주세요.
-
-생성 규칙:
-1. 기존 카테고리들의 스타일과 형식을 반드시 따르세요. (예: '구매완료', '배송상태' 처럼 '명사' 또는 '명사+동사' 형태)
-2. 간결하고 명확해야 합니다. (2~5자 내외)
-3. 생성된 카테고리명만 JSON 형식으로 응답하세요.
-
-기존 카테고리 스타일 참고:
-{', '.join(self.existing_categories[:10])} # 일부만 보여줘도 스타일 파악 가능
-
-JSON 응답 형식:
-{{
-    "new_category": "생성된 카테고리명"
-}}
-"""
+            당신은 카테고리 네이밍 전문가입니다.
+            다음 메시지 내용의 핵심을 가장 잘 나타내는 새로운 카테고리명을 1개 생성해주세요.
+            
+            생성 규칙:
+            1. 기존 카테고리들의 스타일과 형식을 반드시 따르세요. (예: '구매완료', '배송상태' 처럼 '명사' 또는 '명사+동사' 형태)
+            2. 간결하고 명확해야 합니다. (2~5자 내외)
+            3. 생성된 카테고리명만 JSON 형식으로 응답하세요.
+            
+            기존 카테고리 스타일 참고:
+            {', '.join(self.existing_categories[:10])} # 일부만 보여줘도 스타일 파악 가능
+            
+            JSON 응답 형식:
+            {{
+                "new_category": "생성된 카테고리명"
+            }}
+            """
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"다음 메시지에 대한 새로운 카테고리명을 생성해주세요:\n{self.user_text}"}
+            {"role": "user", "content": f"다음 메시지에 대한 새로운 카테고리명을 생성해주세요:\n{self.userMessage}"}
         ]
         return messages
 
-async def parallel_title_category_node(state: TemplateGenerationState) -> TemplateGenerationState:
-    """노드 2: 제목 생성 및 카테고리 분류 (병렬) - 신규 카테고리 생성 기능 추가"""
-    logger.info("=" * 60)
-    logger.info("2단계: 제목 생성 및 카테고리 분류 (병렬) 시작")
-    logger.info("=" * 60)
-
-    async def generate_title_task():
-        # ... (기존과 동일)
-        logger.info("제목 생성 작업 시작")
-        title_builder = TemplateTitlePromptBuilder(state["user_text"])
-        messages = title_builder.build()
-        result = await state["openai_service"].chat_completion(messages)
-        logger.info(f"생성된 제목: '{result}'")
-        return result
-
-    async def classify_or_create_category_task():
-        """카테고리를 분류하거나, 적합하지 않으면 새로 생성하는 태스크"""
-        logger.info("카테고리 분류/생성 작업 시작")
-
-        # --- 1단계: 기존 리스트 내에서 분류 시도 ---
-        logger.info("1차: 기존 카테고리 내에서 분류 시도...")
-        category_builder = CategoryPromptBuilder(state["user_text"], state["category_sub_list"])
-        messages = category_builder.build()
-        response = await state["openai_service"].chat_completion(messages)
-        first_attempt_result = json.loads(response)
-
-        logger.info(f"1차 시도 결과: 적합성={first_attempt_result.get('is_appropriate')}, 신뢰도={first_attempt_result.get('confidence')}%")
-
-        # --- 2단계: 결과에 따른 분기 처리 ---
-        CONFIDENCE_THRESHOLD = 70
-        is_appropriate = first_attempt_result.get("is_appropriate", False)
-        confidence = first_attempt_result.get("confidence", 0)
-
-        if is_appropriate and confidence >= CONFIDENCE_THRESHOLD:
-            logger.info("✅ 1차 분류 성공. 기존 카테고리를 사용합니다.")
-            # 최종 결과 형식에 맞게 재구성
-            final_category_result = {
-                "category_sub": first_attempt_result.get("category_sub"),
-                "confidence": confidence,
-                "selection_reason": first_attempt_result.get("selection_reason"),
-                "generation_source": "classified_existing" # 출처 명시
-            }
-            return final_category_result
-        else:
-            logger.warning("⚠️ 1차 분류 실패 또는 신뢰도 낮음. 신규 카테고리 생성을 시도합니다.")
-            logger.info(f"사유: {first_attempt_result.get('selection_reason')}")
-
-            # --- 3단계: 신규 카테고리 생성 ---
-            new_category_builder = NewCategoryPromptBuilder(state["user_text"], state["category_sub_list"])
-            messages = new_category_builder.build()
-            response = await state["openai_service"].chat_completion(messages)
-            new_category_result = json.loads(response)
-
-            new_category = new_category_result.get("new_category")
-            logger.info(f"✨ 생성된 신규 카테고리: '{new_category}'")
-
-            final_category_result = {
-                "category_sub": new_category,
-                "confidence": 95, # 새로 생성했으므로 신뢰도는 높게 설정
-                "selection_reason": f"기존 리스트에 적합한 카테고리가 없어 '{new_category}'를 새로 생성함.",
-                "generation_source": "created_new" # 출처 명시
-            }
-            return final_category_result
-
-    try:
-        # 병렬 실행
-        title_result, category_result = await asyncio.gather(
-            generate_title_task(),
-            classify_or_create_category_task()
-        )
-
-        state["generated_title"] = title_result.strip()
-        state["category_result"] = category_result
-
-        logger.info("병렬 작업 완료")
-        logger.info(f"최종 제목: '{state['generated_title']}'")
-        logger.info(f"최종 카테고리: {category_result.get('category_sub')} (출처: {category_result.get('generation_source')})")
-
-    except Exception as e:
-        # ... (기존 예외 처리)
-        logger.error(f"병렬 처리 실패: {e}")
-        state["generated_title"] = "알림톡 안내"
-        state["category_result"] = {
-            "category_sub": "기타",
-            "confidence": 0,
-            "selection_reason": "오류로 인한 기본값",
-            "generation_source": "error"
-        }
-
-
-    return state
 class TypePromptBuilder(BasePromptBuilder):
-    def __init__(self, user_text: str):
-        super().__init__(user_text)
+    def __init__(self, userMessage: str):
+        super().__init__(userMessage)
 
     def build(self) -> list[dict]:
         prompt = [
@@ -356,7 +274,7 @@ class TypePromptBuilder(BasePromptBuilder):
             },
             {
                 "role": "user",
-                "content": f"본문: {self.user_text}"
+                "content": f"본문: {self.userMessage}"
             }
         ]
         return prompt
@@ -396,8 +314,8 @@ class TypePromptBuilder(BasePromptBuilder):
 
 class TemplateTitlePromptBuilder:
     """템플릿 제목 생성 프롬프트 빌더"""
-    def __init__(self, user_text: str):
-        self.user_text = user_text
+    def __init__(self, userMessage: str):
+        self.userMessage = userMessage
 
     def build(self) -> List[Dict]:
         system_prompt = """
@@ -417,26 +335,33 @@ class TemplateTitlePromptBuilder:
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"다음 메시지의 제목을 생성해주세요:\n{self.user_text}"}
+            {"role": "user", "content": f"다음 메시지의 제목을 생성해주세요:\n{self.userMessage}"}
         ]
 
         return messages
 
 class ReferenceBasedTemplatePromptBuilder:
     """참고 템플릿 기반 생성 프롬프트 빌더"""
-    def __init__(self, user_text: str, reference_templates: List[Dict], extracted_fields: Dict):
-        self.user_text = user_text
+    def __init__(self, userMessage: str, reference_templates: List[Dict], extracted_fields: Dict):
+        self.userMessage = userMessage
         self.reference_templates = reference_templates
         self.extracted_fields = extracted_fields
 
     def build(self) -> List[Dict]:
-        # 참고 템플릿들을 문자열로 구성
+        """
+        - 참고 템플릿들을 문자열로 구성
+        - LLM에게 제목,목적 등 추가적인 맥락을 제공하여, 생성될 템플릿의 목적성을 더 명확하게 만듦.
+        """
         reference_context = ""
         for i, template in enumerate(self.reference_templates, 1):
             similarity = template.get('similarity', 0)
-            reference_context += f"\n=== 참고 템플릿 {i} (유사도: {similarity:.3f}) ===\n{template.get('text', '')}\n"
+            metadata = template.get('metadata', {})
+            # 👇 메타데이터에서 '자동 생성 제목'이나 '목적 분류' 같은 유용한 정보를 추가
+            title_hint = metadata.get('자동 생성 제목', '제목 정보 없음')
 
-        # 👇 변수 처리 규칙을 명시적으로 추가
+            reference_context += f"\n=== 참고 템플릿 {i} (유사도: {similarity:.3f}, 제목: '{title_hint}') ===\n{template.get('text', '')}\n"
+
+    # 👇 변수 처리 규칙을 명시적으로 추가
         variable_rules = ""
         if self.extracted_fields:
             variable_rules = "\n\n**중요 변수 처리 규칙:**\n"
@@ -445,34 +370,44 @@ class ReferenceBasedTemplatePromptBuilder:
                 variable_rules += f"- '{value}'는 -> `#{{{var_name}}}'\n`으로 변경하세요.\n"
 
         system_prompt = f"""
-카카오 알림톡 템플릿 생성 전문가입니다.
-{variable_rules}
-다음 승인된 템플릿들을 참고하여 새로운 템플릿을 생성하세요:
-
-{reference_context}
-
-생성 규칙:
-1. 변수는 #{{변수명}} 형태로 표현
-2. 참고 템플릿의 구조와 톤앤매너 유지
-3. 광고성 내용 금지, 정보성/안내성 내용만
-4. 발송 근거를 하단에 명시 (*로 시작)
-5. 카카오톡 알림톡 규정 준수
-6. 사용자 요청에 맞게 내용 조정
-
-템플릿 본문만 출력하세요 (변수 설명이나 추가 안내 불포함):
-"""
-
+            당신은 최고의 템플릿 구조를 분석하고 모방하는 '템플릿 아키텍트'입니다.
+            
+            **[미션]**
+            1.  아래에 제공된 '참고 템플릿'들의 **구조적 장점(줄 바꿈, 항목 구분, 강조 표시 등)을 분석**하세요.
+            2.  분석한 구조를 바탕으로, '사용자 요청'과 '변수 처리 규칙'에 맞춰 가장 이상적인 새 템플릿을 **재창조**하세요.
+            
+            {variable_rules}
+            다음 승인된 템플릿들을 참고하여 새로운 템플릿을 생성하세요:
+            
+            **[참고 템플릿 분석]**
+            {reference_context}
+            
+            **[학습 포인트]**
+            - 위 참고 템플릿들에서 `#{{변수명}}`이 어떤 위치에, 어떤 이름으로 사용되었는지 학습하세요.
+            - 예를 들어, 참고 템플릿에 `#{{order_no}}`가 있다면, 새로운 템플릿에서도 주문번호는 비슷한 위치에 `#{{order_id}}`와 같이 배치하는 것이 좋습니다.
+            
+            생성 규칙:
+            1. 변수는 #{{변수명}} 형태로 표현, 변수 처리 규칙을 100% 준수해야 합니다.
+            2. 참고 템플릿의 구조 모방 : 참고 템플릿의 인사말, 본문, 항목 구분(예: '■'), 마무리, 발송 근거 등의 구조를 적극적으로 따라야 합니다.
+            3. 톤앤매너 유지
+            3. 광고성 내용 금지, 정보성/안내성 내용만
+            4. 발송 근거를 하단에 명시 (*로 시작)
+            5. 카카오톡 알림톡 규정 준수
+            6. **내용 창작:** 구조는 모방하되, 내용은 '사용자 요청'에 맞게 새롭게 작성해야 합니다.
+            
+            템플릿 본문만 출력하세요 (변수 설명이나 추가 안내 불포함):
+            """
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"사용자 요청:\n{self.user_text}"}
+            {"role": "user", "content": f"사용자 요청:\n{self.userMessage}"}
         ]
 
         return messages
 
 class NewTemplatePromptBuilder:
     """신규 템플릿 생성 프롬프트 빌더 - 카카오 공용 템플릿 기반"""
-    def __init__(self, user_text: str,  extracted_fields: Dict, public_templates: Optional[List[Dict]] = None):
-        self.user_text = user_text
+    def __init__(self, userMessage: str,  extracted_fields: Dict, public_templates: Optional[List[Dict]] = None):
+        self.userMessage = userMessage
         self.extracted_fields = extracted_fields  # 👈 전달받은 인자를 self.extracted_fields에 저장
         self.public_templates = public_templates or []
 
@@ -486,50 +421,56 @@ class NewTemplatePromptBuilder:
         variable_rules = ""
         if self.extracted_fields:
             variable_rules = "\n\n**중요 변수 처리 규칙:**\n"
-            variable_rules += "다음 텍스트는 반드시 지정된 변수명으로 대체하여 `#{변수명}` 형태로 표현해야 합니다.\n"
+            variable_rules += "아래 규칙에 따라, 원본 메시지의 특정 단어를 `#{변수명}` 형태로 반드시 교체해야 합니다.\n"
             # extracted_fields가 { "변수값": "변수명" } 형태라고 가정
             for value, var_name in self.extracted_fields.items():
-                variable_rules += f"- '{value}' -> `#{{{var_name}}}`으로 변경하세요.\n"
+                variable_rules += f"- '{value}'는 `#{{{var_name}}}`으로 변경하세요.\n"
 
         system_prompt = f"""
-**[당신의 역할]**
-당신은 10년차 카피라이터이자 카카오 알림톡 템플릿 검수 전문가입니다.
-고객에게 전달되는 메시지인 만큼, 명확하고 친절하며 프로페셔널한 톤앤매너를 유지해야 합니다.
-사용자가 제공한 '변수 처리 규칙'을 완벽하게 준수해야 합니다.
+            **[당신의 역할]**
+            당신은 15년차 카피라이터이자 카카오 알림톡 템플릿 검수 전문가입니다.
+            고객에게 전달되는 메시지인 만큼, 명확하고 친절하며 프로페셔널한 톤앤매너를 유지해야 합니다.
+            아래 제공된 모든 규칙을 완벽하게 준수하여, 단 하나의 템플릿만 생성해야 합니다.
+            사용자가 제공한 '변수 처리 규칙'을 완벽하게 준수해야 합니다.
+            
+            {variable_rules}
+            **[필수 규칙 2: 템플릿 구조]**
+            1.  **인사:** "안녕하세요, 고객님." 과 같이 부드러운 문장으로 시작합니다.
+            2.  **핵심 내용:** 전달하려는 가장 중요한 내용을 먼저 제시합니다.
+            3.  **상세 정보 (선택 사항):** 필요시, '■' 또는 '-' 기호를 사용하여 정보를 항목별로 명확하게 구분합니다.
+            4.  **마무리:** "감사합니다." 또는 "많은 이용 부탁드립니다." 와 같은 긍정적인 문장으로 끝맺습니다.
+            5.  **발송 근거:** 템플릿 가장 마지막 줄에는 `*`로 시작하는 발송 근거를 반드시 포함해야 합니다. (예: `*본 알림은 정보통신망법에 따라 발송되었습니다.`)
 
-{variable_rules}
-
-**[좋은 템플릿의 조건]**
-1.  **친절함:** 딱딱하지 않고 부드러운 문장으로 시작하고 끝냅니다.
-2.  **명확성:** 핵심 정보를 쉽게 파악할 수 있도록 줄 바꿈과 구성을 활용합니다.
-3.  **정확성:** 변수 규칙을 포함한 모든 규칙을 100% 준수합니다.
-
-**[생성 예시]**
-- 사용자 요청: "김철수님, 주문하신 상품(스마트폰)이 정상적으로 접수되었습니다. 주문번호는 ORD-2024-001이며, 결제금액은 850,000원입니다."
-- 변수 규칙: '김철수' -> `customer_name`, 'ORD-2024-001' -> `order_id`, '850,000' -> `amount`
-- 좋은 템플릿 결과:
-안녕하세요, #{{customer_name}}님.
-주문하신 상품이 정상적으로 접수되었습니다.
-
-■ 주문번호: #{{order_id}}
-■ 결제금액: #{{amount}}원
-
-상품 준비 후 배송이 시작되면 다시 한번 안내해 드리겠습니다.
-저희 서비스를 이용해 주셔서 감사합니다.
-
-*본 알림은 정보통신망법에 따라 발송되었습니다.
-
----
-위 예시처럼, 주어진 요청과 규칙에 맞춰 최고의 템플릿을 생성해주세요.
-
-{public_context}
-
-템플릿 본문만 출력하세요:
-"""
+            **[좋은 템플릿의 조건]**
+            1.  **친절함:** 딱딱하지 않고 부드러운 문장으로 시작하고 끝냅니다.
+            2.  **명확성:** 핵심 정보를 쉽게 파악할 수 있도록 줄 바꿈과 구성을 활용합니다.
+            3.  **정확성:** 변수 규칙을 포함한 모든 규칙을 100% 준수합니다.
+            
+            **[생성 예시]**
+            - 사용자 요청: "김철수님, 주문하신 상품(스마트폰)이 정상적으로 접수되었습니다. 주문번호는 ORD-2024-001이며, 결제금액은 850,000원입니다."
+            - 변수 규칙: '김철수' -> `customer_name`, 'ORD-2024-001' -> `order_id`, '850,000' -> `amount`
+            - 좋은 템플릿 결과:
+            안녕하세요, #{{customer_name}}님.
+            주문하신 상품이 정상적으로 접수되었습니다.
+            
+            ■ 주문번호: #{{order_id}}
+            ■ 결제금액: #{{amount}}원
+            
+            상품 준비 후 배송이 시작되면 다시 한번 안내해 드리겠습니다.
+            저희 서비스를 이용해 주셔서 감사합니다.
+            
+            *본 알림은 정보통신망법에 따라 발송되었습니다.
+            
+            ---
+            위 예시와 모든 규칙을 참고하여, 주어진 요청에 맞는 최고의 템플릿을 생성해주세요.
+            
+            {public_context}
+            
+            템플릿 본문만 출력하세요:
+            """
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"다음 요청에 맞는 알림톡 템플릿을 생성해주세요:\n{self.user_text}"}
+            {"role": "user", "content": f"다음 요청에 맞는 알림톡 템플릿을 생성해주세요:\n{self.userMessage}"}
         ]
-
         return messages
