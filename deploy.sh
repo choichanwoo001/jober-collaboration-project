@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 # 로그 함수
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
-}
+} 
 
 log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
@@ -105,8 +105,15 @@ else
 fi
 
 
+# Redis 상태 확인
+if redis-cli ping > /dev/null 2>&1; then
+    log_success "Redis가 정상적으로 실행 중입니다."
+else
+    log_warning "Redis 헬스체크 실패. Redis가 실행 중인지 확인해주세요."
+fi
+
 # ChromaDB 상태 확인 (포트 8001로 가정)
-if curl -f http://localhost:8001/health > /dev/null 2>&1; then
+if curl -f http://localhost:8001/api/v1 > /dev/null 2>&1; then
     log_success "ChromaDB가 정상적으로 실행 중입니다."
 else
     log_warning "ChromaDB 헬스체크 실패. ChromaDB가 실행 중인지 확인해주세요."
@@ -153,9 +160,9 @@ docker-compose ps
 log_success "배포가 완료되었습니다!"
 echo ""
 echo "서비스 접속 정보:"
-echo "  프론트엔드: http://144.24.69.36"
-echo "  백엔드 API: http://144.24.69.36/api"
-echo "  AI 서비스: http://144.24.69.36/ai"
+echo "  프론트엔드: http://158.179.169.48"
+echo "  백엔드 API: http://158.179.169.48/api"
+echo "  AI 서비스: http://158.179.169.48/ai"
 echo ""
 echo "서비스 관리 명령어:"
 echo "  Docker 서비스 상태 확인: docker-compose ps"
@@ -166,7 +173,7 @@ echo ""
 echo "  호스트 서비스 관리:"
 echo "  MySQL 상태: sudo systemctl status mysql"
 echo "  MySQL 재시작: sudo systemctl restart mysql"
-echo "  ChromaDB 상태: curl http://localhost:8001/health"
+echo "  ChromaDB 상태: curl http://localhost:8001/api/v1"
 echo ""
 echo "  Docker 서비스 관리:"
 echo "  Nginx 컨테이너 로그: docker-compose logs -f nginx"
