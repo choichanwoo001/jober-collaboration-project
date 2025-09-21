@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from contextlib import asynccontextmanager
 import os
-from routers import ai_routes
+# from routers import ai_routes
 # 로깅 활성화 - 디버깅용
 import logging
 
@@ -69,7 +69,7 @@ app.add_middleware(
 )
 
 # 라우터 등록
-app.include_router(ai_routes.router)
+# app.include_router(ai_routes.router)
 
 # 알림톡 검증 라우터 추가
 try:
@@ -112,6 +112,23 @@ class DocumentRequest(BaseModel):
 class SearchRequest(BaseModel):
     query: str
     n_results: Optional[int] = 5
+
+# 애플리케이션 시작 시, 모든 "서비스"와 "의존성"을 딱 한 번만 생성
+@app.on_event("startup")
+async def startup_event():
+    # 모든 서비스 인스턴스를 app.state에 저장하여 어디서든 접근 가능.
+    app.state.chromadb_service = ChromaDBService()
+    app.state.constraint_validator = ConstraintValidator()
+
+    # 👇 ValidationPipeline을 생성할 때, 미리 만들어 둔 객체들을 "주입".
+    app.state.validation_pipeline = ValidationPipeline(
+        chromadb_service=app.state.chromadb_service,
+        constraint_validator=app.state.constraint_validator
+    )
+
+    # 라우터에게도 이 파이프라인 객체를 전달할 수 있음.
+    alimtalk_routes.set_validation_service(app.state.validation_pipeline)
+
 
 # 기본 라우트
 @app.get("/")
