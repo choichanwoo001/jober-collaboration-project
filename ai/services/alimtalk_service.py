@@ -52,7 +52,12 @@ class AlimtalkValidationService:
             await self._load_initial_guidelines()
             
             # 검증 파이프라인 초기화
-            self.validation_pipeline = ValidationPipeline()
+            from validators.constraint_validator import ConstraintValidator
+            constraint_validator = ConstraintValidator()
+            self.validation_pipeline = ValidationPipeline(
+                chromadb_service=self.chromadb_service,
+                constraint_validator=constraint_validator
+            )
             
             self.is_initialized = True
             print(">>service<<")

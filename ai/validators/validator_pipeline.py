@@ -20,8 +20,8 @@ class ValidationPipeline:
         즉, 오직 "검증 순서 제어"라는 자신의 책임에만 100% 집중합니다.
         """
         # ✅ 의존성 주입으로 수정함.
-        chromadb_service = ChromaDBService()
-        self.constraint_validator = ConstraintValidator()  # OpenAI API 사용
+        self.chromadb_service = chromadb_service
+        self.constraint_validator = constraint_validator  # 외부에서 주입받음
         self.semantic_validator = SemanticValidator(chromadb_service=chromadb_service)      # ChromaDB blacklist 컬렉션 사용
         
     def validate(self, template_data: Dict[str, Any]) -> Dict[str, Any]:
