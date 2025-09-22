@@ -87,7 +87,6 @@ async def parallel_title_category_node(state: TemplateGenerationState) -> Dict[s
         return {"generated_title": "제목 생성 실패", "category_result": {"category_sub": "기타", "selection_reason": "분류 실패"}}
 
 
-
 async def search_templates_node(state: TemplateGenerationState) -> Dict[str, Any]:
     logger.info("=" * 60)
     logger.info("3단계: RAG - 스마트 템플릿 검색 시작")
@@ -178,6 +177,7 @@ async def search_templates_node(state: TemplateGenerationState) -> Dict[str, Any
     except Exception as e:
         logger.error(f"❌ 유사 템플릿 검색 실패: {e}", exc_info=True)
         return {"similar_templates": [], "max_similarity": 0.0}
+
 def extract_service_keywords(message: str) -> List[str]:
     """서비스 관련 핵심 키워드 추출"""
     service_patterns = {
@@ -205,45 +205,6 @@ def extract_service_keywords(message: str) -> List[str]:
         found_keywords.append('침대')
 
     return list(set(found_keywords))
-
-
-def extract_keywords_from_message(message: str) -> List[str]:
-    """메시지에서 핵심 키워드 추출"""
-    import re
-
-    # 브랜드명, 행사명, 장소명 등 고유명사 우선 추출
-    patterns = [
-        r'[가-힣]{2,8}(?:행사|이벤트|세일|할인)',  # 행사 관련
-        r'[가-힣]{2,10}(?:백화점|마트|몰|점)',    # 장소 관련
-        r'[가-힣]{2,8}(?:브랜드|제품)',           # 브랜드 관련
-        r'\d{1,3}%(?:~\d{1,3}%)?',               # 할인율
-        r'\d{4}년\s*\d{1,2}월\s*\d{1,2}일',     # 날짜
-    ]
-
-    keywords = []
-    for pattern in patterns:
-        matches = re.findall(pattern, message)
-        keywords.extend(matches)
-
-    # 일반적인 명사도 추출 (간단한 방식)
-    common_keywords = ['할인', '행사', '이벤트', '세일', '브랜드', '상품', '고객', '혜택']
-    for keyword in common_keywords:
-        if keyword in message:
-            keywords.append(keyword)
-
-    return list(set(keywords))  # 중복 제거
-
-
-def remove_duplicate_templates(templates: List[Dict]) -> List[Dict]:
-    """중복 템플릿 제거 (템플릿 코드 기준)"""
-    seen_codes = set()
-    unique_templates = []
-
-    for template in templates:
-        code = template.get('template_code', template.get('id', ''))
-        if code not in seen_codes:
-            seen_codes.add(code)
-            unique_templates.append(template)
 
 
 def extract_keywords_from_message(message: str) -> List[str]:
@@ -342,7 +303,7 @@ async def extract_fields_node(state: TemplateGenerationState) -> Dict[str, Any]:
         logger.error(f"   원본 응답: {response}")
         return {"extracted_fields": {}}
 
-# 테스트를 위한 예시 사용법:
+# 필드 잘 뽑아오는 지 테스트 위한 예시 사용법:
 async def test_extraction():
     state = TemplateGenerationState({
         "userMessage": """[롯데광주 오일릴리 - 이월행사]
