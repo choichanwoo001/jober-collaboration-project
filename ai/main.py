@@ -114,21 +114,7 @@ class SearchRequest(BaseModel):
     query: str
     n_results: Optional[int] = 5
 
-# 애플리케이션 시작 시, 모든 "서비스"와 "의존성"을 딱 한 번만 생성
-@app.on_event("startup")
-async def startup_event():
-    # 모든 서비스 인스턴스를 app.state에 저장하여 어디서든 접근 가능.
-    app.state.chromadb_service = ChromaDBService()
-    app.state.constraint_validator = ConstraintValidator()
-
-    # 👇 ValidationPipeline을 생성할 때, 미리 만들어 둔 객체들을 "주입".
-    app.state.validation_pipeline = ValidationPipeline(
-        chromadb_service=app.state.chromadb_service,
-        constraint_validator=app.state.constraint_validator
-    )
-
-    # 라우터에게도 이 파이프라인 객체를 전달할 수 있음.
-    alimtalk_routes.set_validation_service(app.state.validation_pipeline)
+# 사용하지 않는 startup 이벤트 제거됨
 
 
 # 기본 라우트
