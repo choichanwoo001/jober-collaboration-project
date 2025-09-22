@@ -1,15 +1,18 @@
 from dotenv import load_dotenv
-import os
-# 환경 변수 로드 - 현재 폴더의 .env 파일 참조
-load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+# 환경 변수 로드
+load_dotenv()
+from api.routes import template_routes
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from exceptions import validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from contextlib import asynccontextmanager
 import os
-from routers import ai_routes
+# from routers import ai_routes
 # 로깅 활성화 - 디버깅용
 import logging
 
@@ -21,7 +24,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 시작 시 실행
@@ -50,6 +52,13 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+#@TODO: 생성 쪽 FastAPI 서버 등록
+# app = FastAPI(title="AI Template Generation API")
+#@TODO: 생성 쪽 예외처리 핸들러 등록
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+
+#@TODO: 생성 쪽 template_routes 라우터의 모든 경로는 /ai 로 시작하도록 설정.
+app.include_router(template_routes.router, prefix="/ai")
 
 # CORS 설정
 app.add_middleware(
@@ -61,7 +70,7 @@ app.add_middleware(
 )
 
 # 라우터 등록
-app.include_router(ai_routes.router)
+# app.include_router(ai_routes.router)
 
 # 알림톡 검증 라우터 추가
 try:
@@ -104,6 +113,23 @@ class DocumentRequest(BaseModel):
 class SearchRequest(BaseModel):
     query: str
     n_results: Optional[int] = 5
+
+# 애플리케이션 시작 시, 모든 "서비스"와 "의존성"을 딱 한 번만 생성
+@app.on_event("startup")
+async def startup_event():
+    # 모든 서비스 인스턴스를 app.state에 저장하여 어디서든 접근 가능.
+    app.state.chromadb_service = ChromaDBService()
+    app.state.constraint_validator = ConstraintValidator()
+
+    # 👇 ValidationPipeline을 생성할 때, 미리 만들어 둔 객체들을 "주입".
+    app.state.validation_pipeline = ValidationPipeline(
+        chromadb_service=app.state.chromadb_service,
+        constraint_validator=app.state.constraint_validator
+    )
+
+    # 라우터에게도 이 파이프라인 객체를 전달할 수 있음.
+    alimtalk_routes.set_validation_service(app.state.validation_pipeline)
+
 
 # 기본 라우트
 @app.get("/")
