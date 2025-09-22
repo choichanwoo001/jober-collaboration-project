@@ -96,43 +96,6 @@ class ChromaDBService:
         except Exception:
             return None
 
-    def search_approved_templates(self, query_text: str, category_sub: str = None, top_k: int = 3) -> Tuple[List[Dict], float]:
-        """
-        승인된 템플릿 검색 (카테고리 제한 옵션)
-        """
-        try:
-            # 카테고리 필터링 조건
-            where_condition = None if category_sub is None else {"category_sub": category_sub}
-
-            results = self.approved_collection.query(
-                query_texts=[query_text],
-                n_results=top_k,
-                where=where_condition  # None이면 전체 검색, 값이 있으면 해당 카테고리만
-            )
-
-            templates = []
-            max_similarity = 0.0
-
-            if results['ids'] and results['ids'][0]:
-                for i, template_id in enumerate(results['ids'][0]):
-                    metadata = results['metadatas'][0][i] if results['metadatas'] else {}
-                    similarity = 1 - results['distances'][0][i]  # 거리를 유사도로 변환
-
-                    template_data = {
-                        'id': template_id,
-                        'similarity': similarity,
-                        'content': results['documents'][0][i] if results['documents'] else '',
-                        **metadata
-                    }
-                    templates.append(template_data)
-                    max_similarity = max(max_similarity, similarity)
-
-            return templates, max_similarity
-
-        except Exception as e:
-            self.logger.error(f"템플릿 검색 중 오류: {e}")
-            return [], 0.0
-
     def search_public_templates(self, query_text: str, top_k: int = 3) -> List[Dict]:
         logger.info("  - 검색 대상: 공용 템플릿")
         if not self.pulblic_templates:
