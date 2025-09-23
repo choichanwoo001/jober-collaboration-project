@@ -410,7 +410,8 @@ class ReferenceBasedTemplatePromptBuilder:
         variable_rules = ""
         if self.extracted_fields:
             variable_rules = "\n\n**중요 변수 처리 규칙:**\n"
-            variable_rules += "다음 텍스트는 반드시 지정된 변수명으로 대체하여 `#{변수명}` 형태로 표현해야 합니다.\n"
+            variable_rules += "다음 텍스트는 반드시 지정된 변수명으로 대체하여 `#{{변수명}}` 형태로 표현해야 합니다.\n"
+            variable_rules += "**모든 변수는 반드시 #{{변수명}} 형태로만 작성해야 합니다. {{변수명}} 형태는 사용하지 마세요.**\n"
             for value, var_name in self.extracted_fields.items():
                 variable_rules += f"- '{value}'는 -> `#{{{var_name}}}'\n`으로 변경하세요.\n"
 
@@ -432,7 +433,7 @@ class ReferenceBasedTemplatePromptBuilder:
             - 예를 들어, 참고 템플릿에 `#{{order_no}}`가 있다면, 새로운 템플릿에서도 주문번호는 비슷한 위치에 `#{{order_id}}`와 같이 배치하는 것이 좋습니다.
             
             생성 규칙:
-            1. 변수는 #{{변수명}} 형태로 표현, 변수 처리 규칙을 100% 준수해야 합니다.
+            1. 변수는 반드시 #{{변수명}} 형태로만 표현, 변수 처리 규칙을 100% 준수해야 합니다. {{변수명}} 형태는 절대 사용하지 마세요.
             2. 참고 템플릿의 구조 모방 : 참고 템플릿의 인사말, 본문, 항목 구분(예: '■'), 마무리, 발송 근거 등의 구조를 적극적으로 따라야 합니다.
             3. 톤앤매너 유지
             3. 광고성 내용 금지, 정보성/안내성 내용만
@@ -466,7 +467,8 @@ class NewTemplatePromptBuilder:
         variable_rules = ""
         if self.extracted_fields:
             variable_rules = "\n\n**중요 변수 처리 규칙:**\n"
-            variable_rules += "아래 규칙에 따라, 원본 메시지의 특정 단어를 `#{변수명}` 형태로 반드시 교체해야 합니다.\n"
+            variable_rules += "아래 규칙에 따라, 원본 메시지의 특정 단어를 `#{{변수명}}` 형태로 반드시 교체해야 합니다.\n"
+            variable_rules += "**모든 변수는 반드시 #{{변수명}} 형태로만 작성해야 합니다. {{변수명}} 형태는 사용하지 마세요.**\n"
             # extracted_fields가 { "변수값": "변수명" } 형태라고 가정
             for value, var_name in self.extracted_fields.items():
                 variable_rules += f"- '{value}'는 `#{{{var_name}}}`으로 변경하세요.\n"
@@ -485,6 +487,7 @@ class NewTemplatePromptBuilder:
             3.  **상세 정보 (선택 사항):** 필요시, '■' 또는 '-' 기호를 사용하여 정보를 항목별로 명확하게 구분합니다.
             4.  **마무리:** "감사합니다." 또는 "많은 이용 부탁드립니다." 와 같은 긍정적인 문장으로 끝맺습니다.
             5.  **발송 근거:** 템플릿 가장 마지막 줄에는 `*`로 시작하는 발송 근거를 반드시 포함해야 합니다. (예: `*본 알림은 정보통신망법에 따라 발송되었습니다.`)
+            6.  **변수 형태:** 모든 변수는 반드시 `#{{변수명}}` 형태로만 작성해야 합니다. `{{변수명}}` 형태는 절대 사용하지 마세요.
 
             **[좋은 템플릿의 조건]**
             1.  **친절함:** 딱딱하지 않고 부드러운 문장으로 시작하고 끝냅니다.
@@ -494,7 +497,7 @@ class NewTemplatePromptBuilder:
             **[생성 예시]**
             - 사용자 요청: "김철수님, 주문하신 상품(스마트폰)이 정상적으로 접수되었습니다. 주문번호는 ORD-2024-001이며, 결제금액은 850,000원입니다."
             - 변수 규칙: '김철수' -> `customer_name`, 'ORD-2024-001' -> `order_id`, '850,000' -> `amount`
-            - 좋은 템플릿 결과:
+            - 좋은 템플릿 결과 (모든 변수는 #{{변수명}} 형태):
             안녕하세요, #{{customer_name}}님.
             주문하신 상품이 정상적으로 접수되었습니다.
             

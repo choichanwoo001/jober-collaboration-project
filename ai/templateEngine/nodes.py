@@ -412,5 +412,7 @@ def finalize_result_node(state: TemplateGenerationState) -> Dict[str, Any]:
 
 def extract_variables_from_template(template_text: str) -> list[str]:
     if not template_text: return []
-    return sorted(list(set(re.findall(r'#\{([^}]+)\}', template_text))))
+    # #{변수명} 패턴만 추출 (통일된 형태)
+    variables = re.findall(r'#\{([^}]+)\}', template_text)
+    return sorted(list(set(variables)))
 
