@@ -102,29 +102,34 @@
       </div>
     </div>
 
-    <!-- 반려 사유 목록 (기본 화면) -->
-    <div class="rejected-summary" v-if="!currentVariable && !showingAlternatives">
-      <h4>반려 사유 목록</h4>
+    <!-- 문제 영역 목록 (기본 화면) -->
+    <div class="problem-areas-summary" v-if="!currentProblemArea && !showingAlternatives">
+      <h4>문제 영역 목록</h4>
+      <div class="summary-stats">
+        <span class="error-count">❌ 오류 {{ totalErrors }}개</span>
+        <span class="warning-count">⚠️ 경고 {{ totalWarnings }}개</span>
+      </div>
       
-      <!-- 전체 반려 사유 목록 -->
-      <div v-if="getAllValidationErrors().length > 0" class="all-errors-section">
-        <div class="error-list">
+      <!-- 문제 영역 목록 -->
+      <div v-if="problemAreas.length > 0" class="problem-areas-section">
+        <div class="problem-area-list">
           <div 
-            v-for="(error, index) in getAllValidationErrors()" 
-            :key="index"
-            class="error-item clickable-error"
-            :class="getSeverityClass(error.severity)"
-            @click="showAlternativesForError(error)"
+            v-for="(area, index) in problemAreas" 
+            :key="area.area_id"
+            class="problem-area-item clickable-area"
+            :class="getSeverityClass(area.severity)"
+            @click="showAlternativesForProblemArea(area)"
           >
-            <div class="error-header">
-              <span class="rule-type-badge">{{ getRuleTypeDisplay(error.rule_type) }}</span>
-              <span class="severity-badge" :class="getSeverityClass(error.severity)">
-                {{ getSeverityDisplay(error.severity) }}
+            <div class="area-header">
+              <span class="area-type-badge">{{ getAreaTypeDisplay(area.area_type) }}</span>
+              <span class="severity-badge" :class="getSeverityClass(area.severity)">
+                {{ getSeverityDisplay(area.severity) }}
               </span>
             </div>
-            <div class="error-content">
-              <p class="error-reason">{{ error.reason }}</p>
-              <p v-if="error.suggestion" class="error-suggestion">💡 {{ error.suggestion }}</p>
+            <div class="area-content">
+              <p class="area-location">📍 {{ area.location }}</p>
+              <p class="area-problem-text">{{ area.problem_text }}</p>
+              <p class="area-reason">{{ area.reason }}</p>
               <p class="click-hint">클릭하여 대안 확인 →</p>
             </div>
           </div>
@@ -160,22 +165,37 @@ interface DetailedValidationError {
   severity: string
   variable_name?: string
   stage: string
+  error_id?: string
+  alternatives?: string[]
+}
+
+interface ProblemArea {
+  area_id: string
+  area_type: string
+  location: string
+  problem_text: string
+  error_type: string
+  severity: string
+  reason: string
+  suggestion: string
+  alternatives: string[]
 }
 
 interface RejectionSidebarProps {
   show: boolean
-  currentVariable: string
+  currentProblemArea: ProblemArea | null
   alternatives: Alternative[]
-  rejectedVariables: string[]
-  validationErrors?: ValidationError | DetailedValidationError[] | null
+  problemAreas: ProblemArea[]
   validationStage?: string
+  totalErrors: number
+  totalWarnings: number
 }
 
 const props = defineProps<RejectionSidebarProps>()
 const emit = defineEmits<{
   close: []
-  variableClick: [variableName: string]
-  applyAlternative: [alternative: Alternative, error: DetailedValidationError]
+  problemAreaClick: [problemArea: ProblemArea]
+  applyAlternative: [alternative: Alternative, problemArea: ProblemArea]
 }>()
 
 const currentAlternatives = ref<Alternative[]>([])
@@ -220,16 +240,57 @@ const goBack = () => {
   currentAlternatives.value = []
 }
 
-// 오류에 대한 대안 표시
-const showAlternativesForError = (error: DetailedValidationError) => {
-  selectedError.value = error
+// 문제 영역에 대한 대안 표시
+const showAlternativesForProblemArea = (area: ProblemArea) => {
+  selectedError.value = area as any
   showingAlternatives.value = true
   
-  // 해당 오류에 대한 대안 3개 생성
-  currentAlternatives.value = generateAlternativesForError(error)
+  // 백엔드에서 받은 대안이 있으면 사용, 없으면 기본 대안 생성
+  if (area.alternatives && area.alternatives.length > 0) {
+    currentAlternatives.value = area.alternatives.map((alt: string) => ({
+      text: alt,
+      selected: false
+    }))
+  } else {
+    // 기본 대안 생성
+    currentAlternatives.value = generateAlternativesForProblemArea(area)
+  }
 }
 
-// 오류별 대안 생성
+// 문제 영역별 대안 생성
+const generateAlternativesForProblemArea = (area: ProblemArea): Alternative[] => {
+  const alternatives: Alternative[] = []
+  
+  if (area.area_type === 'specific_text') {
+    alternatives.push(
+      { text: '해당 문구를 중립적 표현으로 수정', selected: false },
+      { text: '광고성 표현을 제거하고 정보 전달 형태로 변경', selected: false },
+      { text: '객관적이고 사실적인 표현으로 재작성', selected: false }
+    )
+  } else if (area.area_type === 'paragraph') {
+    alternatives.push(
+      { text: '해당 문단을 안내성 표현으로 재작성', selected: false },
+      { text: '권유성 문구를 정보 제공 형태로 변경', selected: false },
+      { text: '전체 문단 구조를 표준 알림톡 형식으로 수정', selected: false }
+    )
+  } else if (area.area_type === 'entire_template') {
+    alternatives.push(
+      { text: '템플릿 전체를 알림톡 승인 기준에 맞게 재작성', selected: false },
+      { text: '표준 알림톡 구조로 완전히 재구성', selected: false },
+      { text: '검증 통과 가능한 형태로 전면 수정', selected: false }
+    )
+  } else {
+    alternatives.push(
+      { text: '문제 영역을 수정하여 알림톡 승인 기준 준수', selected: false },
+      { text: '해당 부분을 표준 형식으로 변경', selected: false },
+      { text: '검증 규칙에 맞는 형태로 수정', selected: false }
+    )
+  }
+  
+  return alternatives
+}
+
+// 오류별 대안 생성 (기존 함수 - 호환성 유지)
 const generateAlternativesForError = (error: DetailedValidationError): Alternative[] => {
   const alternatives: Alternative[] = []
   
@@ -266,6 +327,16 @@ const generateAlternativesForError = (error: DetailedValidationError): Alternati
   }
   
   return alternatives
+}
+
+// 영역 타입 표시명 변환
+const getAreaTypeDisplay = (areaType: string) => {
+  const typeMap: Record<string, string> = {
+    'specific_text': '특정 문구',
+    'paragraph': '문단',
+    'entire_template': '전체 템플릿'
+  }
+  return typeMap[areaType] || areaType
 }
 
 // 규칙 유형 표시명 변환
@@ -616,15 +687,36 @@ const getAllValidationErrors = () => {
   cursor: not-allowed;
 }
 
-.rejected-summary {
+.problem-areas-summary {
   margin-top: 0.8rem;
 }
 
-.rejected-summary h4 {
+.problem-areas-summary h4 {
   margin: 0 0 0.6rem 0;
   color: #333;
   font-size: 1rem;
   font-weight: 600;
+}
+
+.summary-stats {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem;
+  background: #f8f9fa;
+  border-radius: 0.4rem;
+}
+
+.error-count {
+  color: #d32f2f;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.warning-count {
+  color: #f57c00;
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
 .rejected-summary h5 {
@@ -638,31 +730,47 @@ const getAllValidationErrors = () => {
   margin-bottom: 1rem;
 }
 
-.all-errors-section {
+.problem-areas-section {
   margin-bottom: 0.8rem;
 }
 
-.error-list {
+.problem-area-list {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
 }
 
-.error-item {
+.problem-area-item {
   padding: 0.6rem;
   border-radius: 0.4rem;
   border: 0.1rem solid #e0e0e0;
   background: #fafafa;
 }
 
-.error-item.severity-error {
+.problem-area-item.severity-error {
   border-color: #ffcdd2;
   background: #ffeaee;
 }
 
-.error-item.severity-warning {
+.problem-area-item.severity-warning {
   border-color: #ffe0b2;
   background: #fff8e1;
+}
+
+.area-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.area-type-badge {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 .error-header {
@@ -686,6 +794,35 @@ const getAllValidationErrors = () => {
   font-weight: bold;
   padding: 0.1rem 0.4rem;
   border-radius: 0.2rem;
+}
+
+.area-content {
+  margin-top: 0.4rem;
+}
+
+.area-location {
+  margin: 0 0 0.3rem 0;
+  font-size: 0.8rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.area-problem-text {
+  margin: 0 0 0.3rem 0;
+  font-size: 0.85rem;
+  color: #333;
+  font-weight: 600;
+  background: #f5f5f5;
+  padding: 0.3rem;
+  border-radius: 0.2rem;
+  border-left: 0.2rem solid #1976d2;
+}
+
+.area-reason {
+  margin: 0 0 0.3rem 0;
+  font-size: 0.8rem;
+  color: #666;
+  font-style: italic;
 }
 
 .error-content {
@@ -742,6 +879,16 @@ const getAllValidationErrors = () => {
   color: #666;
   font-style: italic;
   margin-top: 0.3rem;
+}
+
+.clickable-area {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clickable-area:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .clickable-error {

@@ -12,7 +12,7 @@
         <div 
           class="kakao-message" 
           v-html="formattedTemplateContent"
-          @click="handleVariableClick"
+          @click="handleProblemAreaClick"
         ></div>
       </div>
     </div>
@@ -23,19 +23,30 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 
+interface ProblemArea {
+  area_id: string
+  area_type: string
+  location: string
+  problem_text: string
+  error_type: string
+  severity: string
+  reason: string
+  suggestion: string
+  alternatives: string[]
+}
+
 interface KakaoPreviewProps {
   templateContent?: string
   templateTitle?: string
   showVariables: boolean
   variables: Record<string, string>
   isRejected: boolean
-  rejectedVariables: string[]
-  validationErrors?: any[]
+  problemAreas: ProblemArea[]
 }
 
 const props = defineProps<KakaoPreviewProps>()
 const emit = defineEmits<{
-  variableClick: [variableName: string]
+  problemAreaClick: [problemArea: ProblemArea]
   rejectTemplate: []
   submitTemplate: []
   updateVariables: [variables: Record<string, string>]
@@ -110,17 +121,18 @@ watch(() => props.variables, (newVariables) => {
   editedVariables.value = { ...newVariables }
 }, { deep: true })
 
-// 변수 클릭 이벤트 처리
-const handleVariableClick = (event: Event) => {
+// 문제 영역 클릭 이벤트 처리
+const handleProblemAreaClick = (event: Event) => {
   event.preventDefault()
   event.stopPropagation()
   
   const target = event.target as HTMLElement
-  const variableElement = target.closest('[data-variable]') as HTMLElement | null
-  const variableName = variableElement?.getAttribute('data-variable') ?? ''
-
-  if (variableName && props.isRejected && props.rejectedVariables.includes(variableName)) {
-    emit('variableClick', variableName)
+  
+  // 클릭된 텍스트가 문제 영역에 해당하는지 확인
+  if (props.isRejected && props.problemAreas.length > 0) {
+    // 첫 번째 문제 영역을 클릭한 것으로 처리 (실제로는 더 정교한 매칭이 필요)
+    const problemArea = props.problemAreas[0]
+    emit('problemAreaClick', problemArea)
   }
 }
 </script>

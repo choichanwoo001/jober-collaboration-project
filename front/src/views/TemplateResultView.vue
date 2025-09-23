@@ -83,11 +83,9 @@
                   :template-title="templateTitle"
                   :show-variables="showVariables"
                   :variables="editedVariables"
-                  :is-modifying="false"
                   :is-rejected="isRejected"
-                  :rejected-variables="rejectedVariables"
-                  :validation-errors="validationErrors"
-                  @variable-click="handleVariableClick"
+                  :problem-areas="problemAreas"
+                  @problem-area-click="handleProblemAreaClick"
                   @update-variables="updateVariables"
                   @submit-template="submitTemplate"
                 />
@@ -97,13 +95,14 @@
               <div class="rejection-sidebar-panel" v-if="showRejectionSidebar">
                 <RejectionSidebarComponent
                   :show="showRejectionSidebar"
-                  :current-variable="currentVariable"
+                  :current-problem-area="currentProblemArea"
                   :alternatives="currentAlternatives"
-                  :rejected-variables="rejectedVariables"
-                  :validation-errors="currentVariable ? currentValidationError : validationErrors"
+                  :problem-areas="problemAreas"
                   :validation-stage="validationStage"
+                  :total-errors="totalErrors"
+                  :total-warnings="totalWarnings"
                   @close="closeRejectionSidebar"
-                  @variable-click="handleVariableClick"
+                  @problem-area-click="handleProblemAreaClick"
                   @apply-alternative="applyAlternativeToTemplate"
                 />
               </div>
@@ -151,13 +150,12 @@ const chatHistoryRef = ref<HTMLElement | null>(null)
 const showVariables = ref(true)
 const showRejectionSidebar = ref(false)
 const isRejected = ref(false)
-const currentVariable = ref('')
+const currentProblemArea = ref<any>(null)
 const currentAlternatives = ref<any[]>([])
-// 사용자 직접 수정 기능 제거
-const rejectedVariables = ref<string[]>([])
-const validationErrors = ref<any[]>([])
-const currentValidationError = ref<any>(null)
+const problemAreas = ref<any[]>([])  // 문제 영역 목록
 const validationStage = ref<string>('') // 검증 단계 정보 추가
+const totalErrors = ref(0)
+const totalWarnings = ref(0)
 
 // 생성된 템플릿 데이터
 const generatedTemplate = ref<any>(null)
@@ -326,65 +324,48 @@ onMounted(() => {
  
 
 
-// 변수 클릭 처리
-const handleVariableClick = (variableName: string) => {
-  if (isRejected.value && rejectedVariables.value.includes(variableName)) {
-    // 반려된 변수 클릭 시 - 대안 선택 사이드바 표시
-    currentVariable.value = variableName
-    
-    // 해당 변수에 대한 검증 오류 찾기
-    const variableErrors = validationErrors.value.filter(error => 
-      error.variable_name === variableName || 
-      (error.reason && error.reason.includes(variableName))
-    )
-    
-    if (variableErrors.length > 0) {
-      const error = variableErrors[0]
-      currentValidationError.value = {
-        variableName: variableName,
-        errorMessage: error.reason,
-        errorType: error.rule_type,
-        validationStage: error.stage,
-        rule: error.rule,
-        suggestion: error.suggestion,
-        severity: error.severity
-      }
-    } else {
-      currentValidationError.value = null
-    }
+// 문제 영역 클릭 처리
+const handleProblemAreaClick = (problemArea: any) => {
+  if (isRejected.value) {
+    // 문제 영역 클릭 시 - 대안 선택 사이드바 표시
+    currentProblemArea.value = problemArea
     
     // 대안 정보 설정 (백엔드에서 받은 대안)
-    currentAlternatives.value = []
+    currentAlternatives.value = problemArea.alternatives?.map((alt: string) => ({
+      text: alt,
+      selected: false
+    })) || []
+    
     showRejectionSidebar.value = true
   }
 }
 
 
 
-// 선택한 대안 적용 (기존 함수 - 호환성 유지)
-const applySelectedAlternative = (alternative: any) => {
-  console.log(`대안 적용: ${currentVariable.value}를 "${alternative.text}"로 대체`)
+// 선택한 대안 적용 (문제 영역 기반)
+const applySelectedAlternative = (alternative: any, problemArea: any) => {
+  console.log(`대안 적용: ${problemArea.location}를 "${alternative.text}"로 수정`)
   
-  // 반려된 변수 목록에서 제거
-  const index = rejectedVariables.value.indexOf(currentVariable.value)
+  // 문제 영역 목록에서 제거
+  const index = problemAreas.value.findIndex(area => area.area_id === problemArea.area_id)
   if (index > -1) {
-    rejectedVariables.value.splice(index, 1)
+    problemAreas.value.splice(index, 1)
   }
   
-  // 모든 반려된 변수가 해결되면 반려 상태 해제
-  if (rejectedVariables.value.length === 0) {
+  // 모든 문제 영역이 해결되면 반려 상태 해제
+  if (problemAreas.value.length === 0) {
     isRejected.value = false
     showRejectionSidebar.value = false
   } else {
-    // 다른 반려된 변수가 있으면 첫 번째로 이동
-    currentVariable.value = ''
+    // 다른 문제 영역이 있으면 초기화
+    currentProblemArea.value = null
     currentAlternatives.value = []
   }
 }
 
-// 템플릿에 대안 적용 (새로운 함수)
-const applyAlternativeToTemplate = (alternative: any, error: any) => {
-  console.log('템플릿에 대안 적용:', alternative.text, '오류:', error.reason)
+// 템플릿에 대안 적용 (문제 영역 기반)
+const applyAlternativeToTemplate = (alternative: any, problemArea: any) => {
+  console.log('템플릿에 대안 적용:', alternative.text, '문제 영역:', problemArea.location)
   
   // 대안에 따라 템플릿 수정 로직 실행
   if (alternative.text.includes('변수를 추가')) {
@@ -392,23 +373,22 @@ const applyAlternativeToTemplate = (alternative: any, error: any) => {
     applyVariableAddition(alternative)
   } else if (alternative.text.includes('재작성') || alternative.text.includes('수정')) {
     // 템플릿 전체 수정 로직
-    applyTemplateRewrite(alternative, error)
+    applyTemplateRewrite(alternative, problemArea)
   } else {
     // 기본 수정 로직
-    applyGenericFix(alternative, error)
+    applyGenericFix(alternative, problemArea)
   }
   
-  // 해당 오류를 해결된 것으로 처리
-  const errorIndex = validationErrors.value.findIndex(e => e.reason === error.reason)
-  if (errorIndex > -1) {
-    validationErrors.value.splice(errorIndex, 1)
+  // 해당 문제 영역을 해결된 것으로 처리
+  const areaIndex = problemAreas.value.findIndex(area => area.area_id === problemArea.area_id)
+  if (areaIndex > -1) {
+    problemAreas.value.splice(areaIndex, 1)
   }
   
-  // 모든 오류가 해결되면 반려 상태 해제
-  if (validationErrors.value.length === 0) {
+  // 모든 문제 영역이 해결되면 반려 상태 해제
+  if (problemAreas.value.length === 0) {
     isRejected.value = false
     showRejectionSidebar.value = false
-    rejectedVariables.value = []
   }
   
   console.log('대안 적용 완료')
@@ -469,7 +449,7 @@ const applyVariableAddition = (alternative: any) => {
 }
 
 // 템플릿 재작성 적용
-const applyTemplateRewrite = (alternative: any, error: any) => {
+const applyTemplateRewrite = (alternative: any, problemArea: any) => {
   if (alternative.text.includes('예약취소 확인')) {
     templateTitle.value = '예약 취소 확인'
     templateContent.value = `안녕하세요, #{고객명}님.
@@ -525,7 +505,7 @@ const applyTemplateRewrite = (alternative: any, error: any) => {
 }
 
 // 일반적인 수정 적용
-const applyGenericFix = (alternative: any, error: any) => {
+const applyGenericFix = (alternative: any, problemArea: any) => {
   if (alternative.text.includes('순수 정보 전달')) {
     templateTitle.value = '안내 사항'
     templateContent.value = `안녕하세요, #{고객명}님.
@@ -580,11 +560,11 @@ const applyGenericFix = (alternative: any, error: any) => {
 const closeRejectionSidebar = () => {
   showRejectionSidebar.value = false
   isRejected.value = false
-  rejectedVariables.value = []
-  validationErrors.value = []
-  currentVariable.value = ''
+  problemAreas.value = []
+  currentProblemArea.value = null
   currentAlternatives.value = []
-  currentValidationError.value = null
+  totalErrors.value = 0
+  totalWarnings.value = 0
 }
 
 // 변수 업데이트
@@ -661,6 +641,13 @@ const submitTemplate = async () => {
     )
     
     console.log('템플릿 검증 응답:', response.data)
+    console.log('응답 구조 확인:', {
+      success: response.data.success,
+      problem_areas: response.data.problem_areas,
+      validation_stage: response.data.validation_stage,
+      total_errors: response.data.total_errors,
+      total_warnings: response.data.total_warnings
+    })
     
     if (response.data.success) {
       // 검증 성공 - 성공 페이지로 이동
@@ -675,54 +662,28 @@ const submitTemplate = async () => {
       console.log('템플릿 검증 실패:', response.data.message)
       console.log('전체 검증 응답:', response.data)
       
-      // 백엔드에서 전달된 상세한 검증 결과 처리
-      const validationResults = response.data.validation_results || []
-      const stage = response.data.validationStage || '1차 검증'
+      // 백엔드에서 전달된 문제 영역 처리
+      const problemAreasData = response.data.problem_areas || []
+      const validationStageData = response.data.validation_stage || '검증'
+      const totalErrorsData = response.data.total_errors || 0
+      const totalWarningsData = response.data.total_warnings || 0
       
-      console.log('검증 결과:', validationResults)
-      console.log('검증 단계:', stage)
+      console.log('문제 영역:', problemAreasData)
+      console.log('검증 단계:', validationStageData)
+      console.log('총 오류:', totalErrorsData, '총 경고:', totalWarningsData)
       
-      // 검증 결과에서 반려된 변수들과 상세 정보 추출
-      const rejectedVars: string[] = []
-      const detailedErrors: any[] = []
+      // 문제 영역 정보 저장
+      problemAreas.value = problemAreasData
+      validationStage.value = validationStageData
+      totalErrors.value = totalErrorsData
+      totalWarnings.value = totalWarningsData
       
-      validationResults.forEach((result: any) => {
-        if (result.details && result.details.validation_details) {
-          result.details.validation_details.forEach((detail: any) => {
-            // 변수 관련 오류인 경우 반려된 변수 목록에 추가
-            if (detail.variable_name && detail.severity === 'error') {
-              rejectedVars.push(detail.variable_name)
-            }
-            
-            // 모든 상세 오류 정보 저장
-            detailedErrors.push({
-              rule_type: detail.rule_type,
-              rule: detail.rule,
-              reason: detail.reason,
-              suggestion: detail.suggestion,
-              severity: detail.severity,
-              variable_name: detail.variable_name || null,
-              stage: result.stage || '1차 검증'
-            })
-          })
-        }
-      })
-      
-      // 중복 제거
-      rejectedVariables.value = [...new Set(rejectedVars)]
-      validationErrors.value = detailedErrors
-      validationStage.value = stage
+      // 반려 상태 설정
       isRejected.value = true
       showRejectionSidebar.value = true
       
-      // 변수가 없어도 템플릿 전체 오류가 있으면 사이드바 표시
-      if (rejectedVariables.value.length === 0 && detailedErrors.length > 0) {
-        // 템플릿 전체를 문제 영역으로 표시
-        rejectedVariables.value = ['템플릿 내용']
-      }
-      
       // 사용자에게 친화적인 안내 메시지 표시
-      alert(`템플릿 수정이 필요합니다 📝\n\n${stage}에서 ${rejectedVariables.value.length > 0 ? '일부 변수' : '내용'}에 문제가 발견되었습니다.\n오른쪽 사이드바에서 상세 내용과 수정 방법을 확인해주세요.`)
+      alert(`템플릿 수정이 필요합니다 📝\n\n${validationStage.value}에서 ${totalErrors.value}개 오류, ${totalWarnings.value}개 경고가 발견되었습니다.\n오른쪽 사이드바에서 상세 내용과 수정 방법을 확인해주세요.`)
     }
   } catch (error) {
     console.error('템플릿 검증 실패:', error)
