@@ -57,15 +57,14 @@ async def validate_template(backend_request: Dict[str, Any]):
         logger.error(f"검증 중 오류: {e}")
         logger.error(traceback.format_exc())
         
-        # 오류 발생 시 백엔드 형식으로 오류 응답 반환
+        # 오류 발생 시 문제 영역 기반 오류 응답 반환
         return {
             "success": False,
             "message": f"검증 중 내부 오류가 발생했습니다: {str(e)}",
-            "rejected_variables": [],
-            "validation_errors": [],
-            "alternatives": {
-                "message": ["시스템 오류가 발생했습니다. 다시 시도해주세요."]
-            }
+            "problem_areas": [],
+            "validation_stage": "오류",
+            "total_errors": 0,
+            "total_warnings": 0
         }
 
 
