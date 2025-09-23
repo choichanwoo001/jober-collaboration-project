@@ -78,10 +78,9 @@ class ChromaDBService:
         """특정 컬렉션 가져오기"""
         if not HAS_CHROMADB or self.client is None:
             return None
+
         try:
-            # collection_name이 없으면 기본 컬렉션 이름 사용
-            name = collection_name or self.collection_name
-            return self.client.get_or_create_collection(name=name)
+            return self.client.get_or_create_collection(name=collection_name)
         except Exception:
             return None
     def _get_or_create_collection(self, collection_name: str):
@@ -154,7 +153,6 @@ class ChromaDBService:
                     }
                     templates.append(template_data)
                     max_similarity = max(max_similarity, similarity)
-
             return templates, max_similarity
 
         except Exception as e:
