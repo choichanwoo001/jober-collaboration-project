@@ -46,6 +46,14 @@ class ValidationPipeline:
             'final_result': None
         }
         
+        # 템플릿에서 변수 추출하여 template_data에 추가
+        template_content = template_data.get('template_content', '')
+        if template_content:
+            import re
+            # #{변수명} 패턴만 추출 (통일된 형태)
+            detected_variables = re.findall(r'#\{([^}]+)\}', template_content)
+            template_data['detected_variables'] = list(set(detected_variables))
+        
         # 1차 검증: 제약 검증
         print("🔍 1차 검증: 제약 검증 실행 중...")
         constraint_result = self.constraint_validator.validate(template_data)

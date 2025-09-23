@@ -19,6 +19,11 @@ def get_variable_usage_validation_prompt(template_content: str, detected_variabl
 탐지된 변수 목록: {detected_variables}
 변수 정의 및 예시값: {variable_names}
 
+**중요**: 
+- 탐지된 변수 목록에 변수가 있으면 "변수가 사용되지 않음" 오류를 발생시키지 마세요
+- 모든 변수는 #{{변수명}} 형태로 통일되어 있습니다
+- 변수가 실제로 템플릿에 사용되고 있으면 정상으로 판단하세요
+
 이 템플릿의 변수 사용이 위 규칙들을 모두 준수하고 있는지 검증해주세요.
 특히 변수 개수, 예시값 존재 여부, 템플릿 구조의 적절성을 중점적으로 확인해주세요.
 
