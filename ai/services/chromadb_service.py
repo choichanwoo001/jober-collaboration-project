@@ -74,6 +74,15 @@ class ChromaDBService:
         except Exception:
             return
 
+    def get_collection(self, collection_name: str = None):
+        """특정 컬렉션 가져오기"""
+        if not HAS_CHROMADB or self.client is None:
+            return None
+
+        try:
+            return self.client.get_or_create_collection(name=collection_name)
+        except Exception:
+            return None
     def _get_or_create_collection(self, collection_name: str):
         """
         컬렉션 가져오기 또는 생성
@@ -86,17 +95,16 @@ class ChromaDBService:
         except Exception:
             return None
 
-    def search_public_templates(self, query_text: str, top_k: int = 3) -> Dict[str, Any]:
+    def search_public_templates(self, query_text: str, top_k: int = 3) -> List[Dict]:
         logger.info("  - 검색 대상: 공용 템플릿")
         if not self.pulblic_templates:
             logger.warning("⚠️ 'pulblic_templates' 컬렉션이 없습니다.")
-            return {"templates": [], "max_similarity": 0.0}
+            return []
         try:
             results = self.pulblic_templates.query(
                 query_texts=[query_text], n_results=top_k, include=['documents', 'metadatas', 'distances']
             )
             templates = []
-            max_similarity = 0.0
 
             # 👇 --- 여기가 핵심 수정 사항 --- 👇
             # ChromaDB의 query 결과는 항상 2차원 리스트이므로, 첫 번째 요소([0])에 접근해야 합니다.
@@ -107,17 +115,15 @@ class ChromaDBService:
                 distances = results['distances'][0]
 
                 for i, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances)):
-                    similarity = 1.0 - float(dist)
-                    templates.append({'id': ids[i], 'text': doc, 'metadata': meta, 'similarity': similarity})
-                    max_similarity = max(max_similarity, similarity)
+                    templates.append({'id': ids[i], 'text': doc, 'metadata': meta, 'similarity': 1.0 - float(dist)})
 
                 templates.sort(key=lambda x: x['similarity'], reverse=True)
-            return {"templates": templates, "max_similarity": max_similarity}
+            return templates
         except Exception as e:
             logger.error(f"❌ 공용 템플릿 검색 중 오류: {e}", exc_info=True)
-            return {"templates": [], "max_similarity": 0.0}
+            return []
 
-    def search_approved_templates(self, query_text: str, category_sub: str = None, top_k: int = 3) -> Dict[str, Any]:
+    def search_approved_templates(self, query_text: str, category_sub: str = None, top_k: int = 3) -> Tuple[List[Dict], float]:
         """
         승인된 템플릿 검색 (카테고리 제한 옵션)
         """
@@ -147,9 +153,8 @@ class ChromaDBService:
                     }
                     templates.append(template_data)
                     max_similarity = max(max_similarity, similarity)
-
-            return {"templates": templates, "max_similarity": max_similarity}
+            return templates, max_similarity
 
         except Exception as e:
-            logger.error(f"템플릿 검색 중 오류: {e}")
-            return {"templates": [], "max_similarity": 0.0}
+            self.logger.error(f"템플릿 검색 중 오류: {e}")
+            return [], 0.0

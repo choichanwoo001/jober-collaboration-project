@@ -99,6 +99,9 @@ except Exception as e:
 
 
 
+# 사용하지 않는 startup 이벤트 제거됨
+
+
 # 기본 라우트
 @app.get("/")
 async def root():
