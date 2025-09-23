@@ -4,7 +4,7 @@ import { useUserStore } from '@/stores/user'
 // API 기본 설정
 const api = axios.create({
   baseURL: '/api',
-  timeout: 10000,
+  timeout: 30000, // 30초로 증가 (AI 검증 시간 고려)
   headers: {
     'Content-Type': 'application/json',
   },
@@ -134,24 +134,29 @@ export const myPageApi = {
     api.put('/mypage/password', { currentPassword, newPassword, confirmPassword })
 }
 
+export type VariableDto = { variableKey: string; variableValue: string };
+
 // 템플릿 관련 API
 export const templateApi = {
-  // AI를 통한 템플릿 생성
+  // AI를 통한 템플릿 생성 (AI 서버 직접 호출)
   generateTemplate: (userMessage: string) => 
     aiApi.post('/template/generate', { userMessage }),
   
   // 템플릿 검증 (백엔드 API를 통해)
-  validateTemplate: (templateContent: string, variableList: Record<string, any>, category?: string, userMessage?: string, templateTitle?: string) => {
-    // 변수명만 배열로 변환 (백엔드에서 List<String>을 기대함)
-    const variableNames = Object.keys(variableList)
-    
+  validateTemplate: (templateContent: string, variableList: VariableDto[], category?: string, userMessage?: string, templateTitle?: string) => {
+    // 백엔드가 기대하는 VariableDto 배열 형식으로 변환
+    // const variableArray = Object.entries(variableList).map(([key, value]) => ({
+    //   variableKey: key,
+    //   variableValue: String(value)
+    // }))
+    //
     // 백엔드 ValidationRequest 형식에 맞게 데이터 변환
     const validationRequest = {
-      templateContent: templateContent,
-      variableList: variableNames,
-      category: category,
-      userMessage: userMessage,
-      templateTitle: templateTitle
+      templateContent,
+      variableList,
+      category,
+      userMessage,
+      templateTitle,
     }
     
     console.log('검증 요청 데이터:', validationRequest)
