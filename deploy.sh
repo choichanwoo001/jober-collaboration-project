@@ -87,8 +87,8 @@ log_success "AI 서비스 빌드 완료"
 
 # 백엔드 이미지 빌드 (로컬에서 직접 빌드)
 log_info "백엔드 이미지 빌드 중..."
-if ! timeout 600 docker-compose build --parallel backend; then
-    log_error "백엔드 빌드 실패 또는 타임아웃 (10분 제한)"
+if ! timeout 1200 docker-compose build --parallel backend; then
+    log_error "백엔드 빌드 실패 또는 타임아웃 (20분 제한)"
     exit 1
 fi
 log_success "백엔드 빌드 완료"
