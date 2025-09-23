@@ -23,6 +23,8 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE }}
           port: 22
+          timeout: 30m
+          command_timeout: 30m
           script: |
             # 프로젝트 디렉토리로 이동
             cd /home/ubuntu/final_6team_pls_jober
