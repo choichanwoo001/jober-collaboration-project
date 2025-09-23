@@ -30,12 +30,27 @@ class CategoryType(str, Enum):
     FEEDBACK = "후기"           # 후기
 
 
+class ProblemArea(BaseModel):
+    """문제 영역 모델"""
+    area_id: str  # 고유 식별자
+    area_type: str  # "specific_text", "paragraph", "entire_template"
+    location: str  # "1-3줄", "제목", "전체", "A/S 안내 문단"
+    problem_text: str  # 문제가 되는 실제 텍스트
+    start_position: Optional[int] = None  # 텍스트 시작 위치
+    end_position: Optional[int] = None  # 텍스트 끝 위치
+    error_type: str  # "informational_message", "standardized_template" 등
+    severity: str  # "error", "warning"
+    reason: str  # 문제 사유
+    suggestion: str  # 개선 방안
+    alternatives: List[str] = []  # 대안 목록
+
 class ValidationResult(BaseModel):
     """검증 결과 모델"""
     is_valid: bool
     stage: str  # "constraint", "semantic", "final"
     errors: List[str] = []
     warnings: List[str] = []
+    problem_areas: List[ProblemArea] = []  # 문제 영역 목록
     details: Optional[Dict[str, Any]] = None
 
 
@@ -62,7 +77,7 @@ class AlimtalkTemplate(BaseModel):
     template_title: Optional[str] = Field(None, max_length=50, description="제목")
     variables: Optional[List[Dict[str, str]]] = Field(None, description="변수 리스트")
     buttons: Optional[List[Button]] = Field(None, max_items=5, description="버튼 목록")
-    category: Optional[CategoryType] = Field(None, description="분류")
+    category: Optional[str] = Field(None, description="분류")
 
     @field_validator('template_content')
     def validate_body(cls, v):
@@ -101,6 +116,31 @@ class ValidationRequest(BaseModel):
                 template=alimtalk_template,
                 user_input=""  # TemplateGenerationResponse에는 user_input이 없음
             )
+        elif "template" in backend_data:
+            # 중첩된 template 구조 처리
+            template_data = backend_data["template"]
+            variables = []
+            if template_data.get("variables"):
+                for v in template_data["variables"]:
+                    if isinstance(v, dict) and v.get("name"):
+                        variables.append({
+                            "name": v.get("name"),
+                            "type": v.get("type", "string"),
+                            "description": v.get("description", "")
+                        })
+            
+            alimtalk_template = AlimtalkTemplate(
+                template_content=template_data.get("template_content", ""),
+                template_title=template_data.get("template_title", "알림톡 템플릿"),
+                variables=variables,
+                category=template_data.get("category"),
+                buttons=[]
+            )
+            
+            return cls(
+                template=alimtalk_template,
+                user_input=backend_data.get("user_input", "")
+            )
         else:
             # 기존 백엔드 요청 구조 - variables_detected를 variables로 변환
             variables = []
@@ -127,12 +167,13 @@ class ValidationRequest(BaseModel):
             )
 
 class ValidationResponse(BaseModel):
-    """검증 응답 모델 - 백엔드 구조와 일치"""
+    """검증 응답 모델 - 문제 영역 기반"""
     success: bool
     message: str
-    rejected_variables: List[str] = []
-    validation_errors: List[Dict[str, Any]] = []
-    alternatives: Dict[str, List[str]] = {}
+    problem_areas: List[ProblemArea] = []  # 문제 영역 목록
+    validation_stage: str = "1차 검증"  # 검증 단계
+    total_errors: int = 0
+    total_warnings: int = 0
 
 class SystemStats(BaseModel):
     """시스템 통계 모델"""
