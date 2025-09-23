@@ -5,6 +5,7 @@ import re
 from services.openai_service import OpenAIService
 from services.chromadb_service import ChromaDBService
 from templateEngine.prompts.message_analyzer_prompts import TemplateGenerationPromptBuilder, TemplateModificationPromptBuilder
+from templateEngine.pipeline import create_pipeline
 from middleware.auth_middleware import get_current_user, get_current_user_id
 
 router = APIRouter(prefix="/ai", tags=["AI Services"])
@@ -47,6 +48,7 @@ class SearchRequest(BaseModel):
 class TemplateGenerationRequest(BaseModel):
     userMessage: str
     model: Optional[str] = "gpt-4o-mini"
+    category: Optional[str] = "기타"
 
 class TemplateGenerationResponse(BaseModel):
     template_content: str
@@ -127,49 +129,44 @@ async def generate_template(request: TemplateGenerationRequest):
     """알림톡 템플릿 생성"""
     try:
         print(f"템플릿 생성 요청 받음: {request.userMessage}")
+        
+        # 카테고리 설정 (요청에서 받거나 기본값 사용)
+        category = request.category or "기타"
 
-        # 가이드라인 검색을 통한 컨텍스트 생성
+        # 템플릿 생성 파이프라인 실행
+        print("템플릿 생성 파이프라인 시작...")
         try:
-            print("ChromaDB 검색 시작...")
-            guidelines = await chromadb_service.search_documents(
-                f"{category} {request.userMessage}",
-                3
-            )
-            print(f"ChromaDB 검색 완료: {len(guidelines.get('documents', []))}개 문서")
+            pipeline = await create_pipeline()
+            result = await pipeline.ainvoke({
+                "userMessage": request.userMessage,
+                "category_sub_list": ["서비스이용", "이용안내/공지", "운영안내", "기타"],
+                "openai_service": openai_service,
+                "chromadb_service": chromadb_service
+            })
+            print("템플릿 생성 파이프라인 실행 완료")
         except Exception as e:
-            print(f"가이드라인 검색 실패: {e}")
-            guidelines = {"documents": []}
+            print(f"파이프라인 실행 실패: {e}")
+            # 파이프라인 실패 시 기본값으로 fallback
+            result = {
+                "template_text": f"안녕하세요. {request.userMessage}에 대한 알림톡 템플릿입니다.",
+                "template_title": f"{category} 템플릿",
+                "variables": [],
+                "category_sub": category
+            }
 
-        # 프롬프트 구성
-        context = ""
-        if guidelines and 'documents' in guidelines:
-            context = "\n".join(guidelines['documents'][:3])
-
-        # 프롬프트 빌더 사용
-        print("프롬프트 빌더 초기화 중...")
-        prompt_builder = TemplateGenerationPromptBuilder(
-            category=category,
-            user_message=request.userMessage,
-            context=context
-        )
-        prompt = prompt_builder.build()
-        print(f"프롬프트 생성 완료 (길이: {len(prompt)}자)")
-
-        # OpenAI를 통한 템플릿 생성
-        print("OpenAI API 호출 시작...")
-        messages = [{"role": "user", "content": prompt}]
-        response = await openai_service.chat_completion(messages, request.model)
-        print(f"OpenAI API 호출 완료 (응답 길이: {len(response)}자)")
-
-        # 응답에서 템플릿과 변수 추출 (간단한 파싱)
-        template_content = response
+        # 파이프라인 결과에서 데이터 추출
+        template_content = result.get("template_text", "")
+        template_title = result.get("template_title", f"{category} 템플릿")
+        category = result.get("category_sub", category)
+        
+        # 변수 추출 및 변환
         variables = []
         raw_variables = result.get("variables", [])
         
         # 변수 추출 (#{변수명} 형태)
         variable_pattern = r'#\{([^}]+)\}'
         found_variables = re.findall(variable_pattern, template_content)
-
+        
         # ✅ TemplateGenerationResponse 구조에 맞게 변수 변환
         variables_dto = []
         for var in set(found_variables):
@@ -178,10 +175,6 @@ async def generate_template(request: TemplateGenerationRequest):
                 "type": "string",
                 "description": f"{var.strip()} 변수"
             })
-
-        
-        # 템플릿 제목 생성 (사용자 메시지 기반)
-        template_title = f"{category} 템플릿 - {request.userMessage[:30]}..."
         
         print(f"템플릿 생성 완료: {len(variables_dto)}개 변수 추출")
         
