@@ -51,7 +51,7 @@ class TemplateGenerationRequest(BaseModel):
 class TemplateGenerationResponse(BaseModel):
     template_content: str
     template_title: str
-    variables: List[Dict[str, Any]]
+    variables: List[Dict[str, str]]
     category: str
     model: str
 
@@ -65,7 +65,7 @@ class TemplateModificationRequest(BaseModel):
 class TemplateModificationResponse(BaseModel):
     modified_template: str
     template_title: str
-    variables: List[Dict[str, Any]]
+    variables: List[str]
     explanation: str
     model: str
 
@@ -150,18 +150,28 @@ async def generate_template(request: TemplateGenerationRequest):
         variables = []
         raw_variables = result.get("variables", [])
         
-        for var in raw_variables:
-            variables.append({
+        # 변수 추출 (#{변수명} 형태)
+        variable_pattern = r'#\{([^}]+)\}'
+        found_variables = re.findall(variable_pattern, template_content)
+
+        # ✅ TemplateGenerationResponse 구조에 맞게 변수 변환
+        variables_dto = []
+        for var in set(found_variables):
+            variables_dto.append({
                 "name": var.strip(),
                 "type": "string",
-                "description": f"{var} 관련 정보"
+                "description": f"{var.strip()} 변수"
             })
-
-        print(f"템플릿 생성 완료: {len(variables)}개 변수, 카테고리: {category}")
+        
+        # 템플릿 제목 생성 (사용자 메시지 기반)
+        template_title = f"{category} 템플릿 - {request.userMessage[:30]}..."
+        
+        print(f"템플릿 생성 완료: {len(variables_dto)}개 변수 추출")
+        
         return TemplateGenerationResponse(
             template_content=template_content,
             template_title=template_title,
-            variables=variables,
+            variables=variables_dto,
             category=category,
             model=request.model
         )
@@ -217,18 +227,14 @@ async def modify_template(request: TemplateModificationRequest):
         modified_template = re.sub(r'\n+', '\n', modified_template).strip()
 
         variables = []
-
-        # 변수 추출 ({{변수명}} 형태)
-        variable_pattern = r'\{\{([^}]+)\}\}'
+        
+        # 변수 추출 (#{변수명} 형태)
+        variable_pattern = r'#\{([^}]+)\}'
         found_variables = re.findall(variable_pattern, modified_template)
 
         for var in set(found_variables):
-            variables.append({
-                "name": var.strip(),
-                "type": "string",
-                "description": f"{var} 관련 정보"
-            })
-
+            variables.append(var.strip())
+        
         # 수정 설명 생성
         explanation = f"사용자 요청 '{request.userMessage}'에 따라 템플릿을 수정했습니다."
 
