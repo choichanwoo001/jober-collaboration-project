@@ -42,6 +42,8 @@ interface KakaoPreviewProps {
   variables: Record<string, string>
   isRejected: boolean
   problemAreas: ProblemArea[]
+  rejectedVariables?: string[]
+  validationErrors?: any[]
 }
 
 const props = defineProps<KakaoPreviewProps>()
@@ -85,7 +87,7 @@ const formattedTemplateContent = computed(() => {
       const variableName = (a || b || c || '').trim()
       let variableClass = 'variable highlighted'
 
-      if (props.isRejected && props.rejectedVariables.includes(variableName)) {
+      if (props.isRejected && props.rejectedVariables && props.rejectedVariables.includes(variableName)) {
         variableClass += ' rejected-highlight'
       }
 

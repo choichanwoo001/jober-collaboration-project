@@ -77,7 +77,7 @@
             <!-- 카카오톡 미리보기와 반려 사이드바를 함께 관리하는 컨테이너 -->
             <div :class="['preview-and-sidebar-container', { 'with-rejection-sidebar': showRejectionSidebar }]">
               <!-- 카카오톡 미리보기 -->
-              <div class="kakao-preview-wrapper">
+              <div class="kakao-preview-wrapper" ref="kakaoPreviewRef">
                 <KakaoPreviewComponent
                   :template-content="templateContent"
                   :template-title="templateTitle"
@@ -85,6 +85,7 @@
                   :variables="editedVariables"
                   :is-rejected="isRejected"
                   :problem-areas="problemAreas"
+                  :rejected-variables="rejectedVariables"
                   @problem-area-click="handleProblemAreaClick"
                   @update-variables="updateVariables"
                   @submit-template="submitTemplate"
@@ -101,6 +102,7 @@
                   :validation-stage="validationStage"
                   :total-errors="totalErrors"
                   :total-warnings="totalWarnings"
+                  :alimtalk-height="alimtalkHeight"
                   @close="closeRejectionSidebar"
                   @problem-area-click="handleProblemAreaClick"
                   @apply-alternative="applyAlternativeToTemplate"
@@ -146,6 +148,8 @@ const router = useRouter()
 
 // 컴포넌트 refs
 const chatHistoryRef = ref<HTMLElement | null>(null)
+const kakaoPreviewRef = ref<HTMLElement | null>(null)
+const alimtalkHeight = ref<number>(0)
 
 const showVariables = ref(true)
 const showRejectionSidebar = ref(false)
@@ -156,6 +160,7 @@ const problemAreas = ref<any[]>([])  // 문제 영역 목록
 const validationStage = ref<string>('') // 검증 단계 정보 추가
 const totalErrors = ref(0)
 const totalWarnings = ref(0)
+const rejectedVariables = ref<string[]>([]) // 반려된 변수 목록
 
 // 생성된 템플릿 데이터
 const generatedTemplate = ref<any>(null)
@@ -312,6 +317,9 @@ onMounted(() => {
       ]
       
       console.log('생성된 템플릿 로드됨:', generatedTemplate.value)
+      
+      // 템플릿 로드 후 알림톡 높이 측정
+      measureAlimtalkHeight()
     } catch (error) {
       console.error('템플릿 데이터 파싱 실패:', error)
       router.push('/')
@@ -367,17 +375,13 @@ const applySelectedAlternative = (alternative: any, problemArea: any) => {
 const applyAlternativeToTemplate = (alternative: any, problemArea: any) => {
   console.log('템플릿에 대안 적용:', alternative.text, '문제 영역:', problemArea.location)
   
-  // 대안에 따라 템플릿 수정 로직 실행
-  if (alternative.text.includes('변수를 추가')) {
-    // 변수 추가 로직
-    applyVariableAddition(alternative)
-  } else if (alternative.text.includes('재작성') || alternative.text.includes('수정')) {
-    // 템플릿 전체 수정 로직
-    applyTemplateRewrite(alternative, problemArea)
-  } else {
-    // 기본 수정 로직
-    applyGenericFix(alternative, problemArea)
-  }
+  // TODO: 백엔드 API를 통해 실제 대안 적용 로직 구현
+  // 현재는 문제 영역만 제거하고 추후 백엔드 연동 필요
+  console.log('백엔드에서 대안 적용 API 호출 필요:', {
+    alternative: alternative.text,
+    problemArea: problemArea.area_id,
+    location: problemArea.location
+  })
   
   // 해당 문제 영역을 해결된 것으로 처리
   const areaIndex = problemAreas.value.findIndex(area => area.area_id === problemArea.area_id)
@@ -394,167 +398,8 @@ const applyAlternativeToTemplate = (alternative: any, problemArea: any) => {
   console.log('대안 적용 완료')
 }
 
-// 변수 추가 적용
-const applyVariableAddition = (alternative: any) => {
-  // 검증 통과 가능한 완전한 템플릿으로 교체
-  if (alternative.text.includes('예약취소 안내')) {
-    templateTitle.value = '예약 취소 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{예약번호} 예약이 #{취소일시}에 취소 처리되었습니다.
-
-취소된 예약 정보:
-- 예약번호: #{예약번호}
-- 취소일시: #{취소일시}
-- 처리상태: 취소 완료
-
-문의사항이 있으시면 고객센터로 연락해 주세요.
-
-감사합니다.`
-    
-    templateVariables.value = ['고객명', '예약번호', '취소일시']
-  } else if (alternative.text.includes('개인화된 알림')) {
-    templateTitle.value = '서비스 처리 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{서비스명} 관련 처리가 #{처리일시}에 완료되었습니다.
-
-처리 내용:
-- 서비스: #{서비스명}
-- 처리일시: #{처리일시}
-- 상태: 완료
-
-추가 문의사항이 있으시면 연락 주세요.`
-    
-    templateVariables.value = ['고객명', '서비스명', '처리일시']
-  } else {
-    templateTitle.value = '안내 사항'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{내용} 관련하여 안내드립니다.
-
-담당자: #{담당자}
-
-문의사항이 있으시면 연락 주세요.`
-    
-    templateVariables.value = ['고객명', '내용', '담당자']
-  }
-  
-  // 편집 가능한 변수 업데이트
-  const newVariables: Record<string, string> = {}
-  templateVariables.value.forEach((variable: string) => {
-    newVariables[variable] = `${variable} 값`
-  })
-  editedVariables.value = newVariables
-}
-
-// 템플릿 재작성 적용
-const applyTemplateRewrite = (alternative: any, problemArea: any) => {
-  if (alternative.text.includes('예약취소 확인')) {
-    templateTitle.value = '예약 취소 확인'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-예약 취소 요청이 정상적으로 처리되었습니다.
-
-취소 정보:
-- 예약번호: #{예약번호}
-- 취소일시: #{취소일시}
-- 환불예정일: #{환불예정일}
-
-환불은 #{환불예정일}에 처리될 예정입니다.
-
-문의사항이 있으시면 고객센터로 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '예약번호', '취소일시', '환불예정일']
-  } else if (alternative.text.includes('서비스 안내')) {
-    templateTitle.value = '서비스 이용 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{서비스명} 이용과 관련하여 안내드립니다.
-
-안내 내용:
-- 서비스명: #{서비스명}
-- 처리일시: #{처리일시}
-- 담당자: #{담당자명}
-
-추가 문의사항이 있으시면 연락 주세요.`
-    
-    templateVariables.value = ['고객명', '서비스명', '처리일시', '담당자명']
-  } else {
-    templateTitle.value = '고객 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{안내내용}에 대해 안내드립니다.
-
-상세 정보:
-- 처리일시: #{처리일시}
-- 담당부서: #{담당부서}
-- 연락처: #{연락처}
-
-문의사항이 있으시면 언제든 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '안내내용', '처리일시', '담당부서', '연락처']
-  }
-  
-  // 편집 가능한 변수 업데이트
-  const newVariables: Record<string, string> = {}
-  templateVariables.value.forEach((variable: string) => {
-    newVariables[variable] = `${variable} 값`
-  })
-  editedVariables.value = newVariables
-}
-
-// 일반적인 수정 적용
-const applyGenericFix = (alternative: any, problemArea: any) => {
-  if (alternative.text.includes('순수 정보 전달')) {
-    templateTitle.value = '안내 사항'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{안내사항}에 대해 안내드립니다.
-
-상세 내용:
-- 처리일시: #{처리일시}
-- 담당자: #{담당자}
-
-문의사항이 있으시면 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '안내사항', '처리일시', '담당자']
-  } else if (alternative.text.includes('표준 알림톡 구조')) {
-    templateTitle.value = '알림 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{처리내용}이 완료되었습니다.
-
-처리 정보:
-- 처리일시: #{처리일시}
-- 처리결과: #{처리결과}
-
-추가 문의사항이 있으시면 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '처리내용', '처리일시', '처리결과']
-  } else {
-    // 기본 승인 가능한 템플릿
-    templateTitle.value = '서비스 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{서비스내용} 관련하여 안내드립니다.
-
-안내 사항:
-- 처리일시: #{처리일시}
-- 상태: #{처리상태}
-
-문의사항이 있으시면 고객센터로 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '서비스내용', '처리일시', '처리상태']
-  }
-  
-  // 편집 가능한 변수 업데이트
-  const newVariables: Record<string, string> = {}
-  templateVariables.value.forEach((variable: string) => {
-    newVariables[variable] = `${variable} 값`
-  })
-  editedVariables.value = newVariables
-}
+// 하드코딩된 대안 적용 함수들 제거됨
+// 백엔드 API를 통해 실제 대안 적용 로직 구현 필요
 
 // 반려 사이드바 닫기
 const closeRejectionSidebar = () => {
@@ -678,16 +523,40 @@ const submitTemplate = async () => {
       totalErrors.value = totalErrorsData
       totalWarnings.value = totalWarningsData
       
+      // 반려된 변수 추출 (변수 사용 규칙 오류가 있는 경우)
+      const rejectedVars: string[] = []
+      problemAreasData.forEach((area: any) => {
+        if (area.error_type === 'variable_usage' && area.problem_text) {
+          // 변수명 추출 (예: #{변수명} 형태)
+          const variableMatches = area.problem_text.match(/#\{([^}]+)\}/g)
+          if (variableMatches) {
+            variableMatches.forEach((match: string) => {
+              const varName = match.replace(/#\{|\}/g, '')
+              if (!rejectedVars.includes(varName)) {
+                rejectedVars.push(varName)
+              }
+            })
+          }
+        }
+      })
+      rejectedVariables.value = rejectedVars
+      
+      console.log('반려된 변수:', rejectedVars)
+      
       // 반려 상태 설정
       isRejected.value = true
       showRejectionSidebar.value = true
       
-      // 사용자에게 친화적인 안내 메시지 표시
-      alert(`템플릿 수정이 필요합니다 📝\n\n${validationStage.value}에서 ${totalErrors.value}개 오류, ${totalWarnings.value}개 경고가 발견되었습니다.\n오른쪽 사이드바에서 상세 내용과 수정 방법을 확인해주세요.`)
+      // 사용자에게 친화적인 안내 메시지 표시 (비동기 처리)
+      setTimeout(() => {
+        alert(`템플릿 수정이 필요합니다 📝\n\n${validationStage.value}에서 ${totalErrors.value}개 오류, ${totalWarnings.value}개 경고가 발견되었습니다.\n오른쪽 사이드바에서 상세 내용과 수정 방법을 확인해주세요.`)
+      }, 100)
     }
   } catch (error) {
     console.error('템플릿 검증 실패:', error)
-    alert('템플릿 검증 중 오류가 발생했습니다. 다시 시도해주세요.')
+    setTimeout(() => {
+      alert('템플릿 검증 중 오류가 발생했습니다. 다시 시도해주세요.')
+    }, 100)
   } finally {
     isValidating.value = false // 검증 완료
   }
@@ -889,6 +758,22 @@ const scrollToBottom = () => {
     }
   })
 }
+
+// 알림톡 높이 측정 함수
+const measureAlimtalkHeight = () => {
+  nextTick(() => {
+    if (kakaoPreviewRef.value) {
+      alimtalkHeight.value = kakaoPreviewRef.value.offsetHeight
+      console.log('알림톡 높이 측정:', alimtalkHeight.value)
+    }
+  })
+}
+
+// 템플릿 내용이나 변수 변경 시 높이 재측정
+watch([templateContent, templateTitle, editedVariables, showVariables], () => {
+  measureAlimtalkHeight()
+}, { deep: true })
+
 </script>
 
 <style scoped>
@@ -1011,7 +896,6 @@ const scrollToBottom = () => {
   width: 20rem;
   min-width: 20rem;
   max-width: 20rem;
-  max-height: 80vh; /* 카카오 미리보기와 동일한 최대 높이 */
   flex-shrink: 0;
   z-index: 10;
   align-self: flex-start; /* 상단 정렬 */

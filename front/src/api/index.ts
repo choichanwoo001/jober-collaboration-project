@@ -161,7 +161,7 @@ export const templateApi = {
     
     console.log('검증 요청 데이터:', validationRequest)
     
-    return api.post('/template/validate', validationRequest)
+    return aiApi.post('/template/validate', validationRequest)
   },
   
   // 템플릿 수정 요청 (채팅을 통한)
