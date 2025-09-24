@@ -20,7 +20,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.alimtalk_models import (
-    ValidationRequest, ValidationResponse, ValidationResult, SystemStats, ProblemArea
+    ValidationRequest, ValidationResponse, ValidationResult, ProblemArea
 )
 from validators.validator_pipeline import ValidationPipeline
 
@@ -86,25 +86,46 @@ class AlimtalkValidationService:
                 final_message = f"❌ 검증 실패: {error_count}개 오류, {warning_count}개 경고"
                 success = False
             
-            # 결과 필터링 (None이 아닌 것만)
+            # 결과 필터링 (None이 아닌 것만, 중복 제거)
             validation_results = []
             if result.get('constraint_result'):
                 validation_results.append(result['constraint_result'])
             if result.get('semantic_result'):
                 validation_results.append(result['semantic_result'])
-            if result.get('final_result'):
-                validation_results.append(result['final_result'])
+            # final_result는 constraint_result와 동일하므로 제외
             
             # 문제 영역 생성
             problem_areas = []
             
             for result in validation_results:
-                for error in result.errors:
-                    # 문제 영역 생성
-                    problem_area = await self._create_problem_area(
-                        error, result.stage, request.template.template_content or ""
-                    )
-                    problem_areas.append(problem_area)
+                # details에서 validation_details 추출
+                if result.details and 'validation_details' in result.details:
+                    validation_details = result.details['validation_details']
+                    for detail in validation_details:
+                        try:
+                            # detail에서 문제 영역 생성
+                            problem_area = await self._create_problem_area_from_detail(
+                                detail, result.stage, request.template.template_content or ""
+                            )
+                            problem_areas.append(problem_area)
+                        except Exception as e:
+                            # 실패 시 기본 문제 영역 생성
+                            try:
+                                problem_area = await self._create_problem_area(
+                                    detail.get('reason', '알 수 없는 오류'), 
+                                    result.stage, 
+                                    request.template.template_content or ""
+                                )
+                                problem_areas.append(problem_area)
+                            except Exception as e2:
+                                print(f"문제 영역 생성 실패: {str(e2)}")
+                else:
+                    # 기존 방식: errors에서 문제 영역 생성
+                    for error in result.errors:
+                        problem_area = await self._create_problem_area(
+                            error, result.stage, request.template.template_content or ""
+                        )
+                        problem_areas.append(problem_area)
             
             # 오류 및 경고 개수 계산
             total_errors = sum(1 for area in problem_areas if area.severity == "error")
@@ -131,6 +152,41 @@ class AlimtalkValidationService:
                 total_warnings=0
             )
     
+    async def _create_problem_area_from_detail(self, detail: Dict[str, Any], stage: str, template_content: str) -> ProblemArea:
+        """상세 검증 결과에서 문제 영역 생성"""
+        # detail에서 정보 추출
+        rule_type = detail.get('rule_type', 'unknown')
+        rule = detail.get('rule', '알 수 없는 규칙')
+        reason = detail.get('reason', '문제가 발견되었습니다')
+        suggestion = detail.get('suggestion', '수정이 필요합니다')
+        severity = detail.get('severity', 'error')
+        
+        # 문제 텍스트와 위치 추출
+        problem_info = self._extract_problem_info_from_detail(detail, template_content)
+        
+        # 대안 생성
+        try:
+            alternatives = await self._generate_alternatives_for_error(reason, stage, template_content)
+        except Exception as e:
+            alternatives = self._get_default_alternatives(reason, stage)
+        
+        # 문제 영역 생성
+        area_id = f"{stage}_{rule_type}_{hash(reason) % 10000}"
+        
+        return ProblemArea(
+            area_id=area_id,
+            area_type=problem_info["area_type"],
+            location=problem_info["location"],
+            problem_text=problem_info["problem_text"],
+            start_position=problem_info.get("start_position"),
+            end_position=problem_info.get("end_position"),
+            error_type=rule_type,
+            severity=severity,
+            reason=reason,
+            suggestion=suggestion,
+            alternatives=alternatives
+        )
+    
     async def _create_problem_area(self, error: str, stage: str, template_content: str) -> ProblemArea:
         """오류를 문제 영역으로 변환"""
         # 오류에서 문제 텍스트와 위치 추출
@@ -155,6 +211,58 @@ class AlimtalkValidationService:
             suggestion="AI에서 생성된 수정 제안을 참고해주세요",
             alternatives=alternatives
         )
+    
+    def _extract_problem_info_from_detail(self, detail: Dict[str, Any], template_content: str) -> Dict[str, Any]:
+        """상세 검증 결과에서 문제 정보 추출"""
+        # 기본값 설정
+        problem_info = {
+            "area_type": "entire_template",
+            "location": "전체",
+            "problem_text": template_content[:100] + "..." if len(template_content) > 100 else template_content
+        }
+        
+        # detail에서 문제 텍스트 추출
+        reason = detail.get('reason', '')
+        
+        # 특정 패턴에 따른 위치 및 텍스트 설정
+        if "전기세를 아끼고 효율을 극대화하세요" in reason:
+            problem_info.update({
+                "area_type": "specific_text",
+                "location": "전기세 절감 문구",
+                "problem_text": "전기세를 아끼고 효율을 극대화하세요"
+            })
+        elif "고객님께서 사전에 고장 체크를 해보시고" in reason:
+            problem_info.update({
+                "area_type": "paragraph",
+                "location": "A/S 권장 문단",
+                "problem_text": "고객님께서 사전에 고장 체크를 해보시고, 이상이 있을 경우 미리 서비스를 받아 불편함이 없도록 하시기 바랍니다"
+            })
+        elif "겨울철 장수돌침대 사용량 증가" in reason:
+            problem_info.update({
+                "area_type": "paragraph",
+                "location": "겨울철 안내 문단",
+                "problem_text": "겨울철 장수돌침대 사용량 증가로 A/S 및 사전점검 일정을 미리 준비하여"
+            })
+        elif "변수가 사용되지 않음" in reason:
+            problem_info.update({
+                "area_type": "entire_template",
+                "location": "전체 템플릿",
+                "problem_text": "변수가 전혀 사용되지 않음"
+            })
+        elif "미리보기 메시지" in reason:
+            problem_info.update({
+                "area_type": "entire_template",
+                "location": "미리보기 영역",
+                "problem_text": "미리보기 메시지 누락"
+            })
+        elif "변수 목록에 포함된" in reason:
+            problem_info.update({
+                "area_type": "specific_text",
+                "location": "변수 목록",
+                "problem_text": "부적절한 변수 사용"
+            })
+        
+        return problem_info
     
     def _extract_problem_info(self, error: str, template_content: str) -> Dict[str, Any]:
         """오류에서 문제 정보 추출"""

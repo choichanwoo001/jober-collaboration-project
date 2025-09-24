@@ -6,29 +6,6 @@ from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 
-class ButtonType(str, Enum):
-    """버튼 타입 열거형"""
-    WEBLINK = "WL"  # 웹링크 (가장 일반적)
-    APPLINK = "AL"  # 앱링크
-    DELIVERY = "DS"  # 배송조회
-
-
-class CategoryType(str, Enum):
-    """알림톡 분류 열거형"""
-    TRANSACTION = "거래"         # 거래성
-    MARKETING = "마케팅"         # 마케팅
-    MIXED = "혼합"              # 혼합
-    REVIEW = "리뷰"             # 검토 필요
-    RESERVATION_CANCEL = "예약취소"  # 예약취소
-    ORDER = "주문"              # 주문
-    PAYMENT = "결제"            # 결제
-    DELIVERY = "배송"           # 배송
-    CANCEL = "취소"             # 취소
-    REFUND = "환불"             # 환불
-    PROMOTION = "프로모션"       # 프로모션
-    ADVERTISEMENT = "광고"       # 광고
-    FEEDBACK = "후기"           # 후기
-
 
 class ProblemArea(BaseModel):
     """문제 영역 모델"""
@@ -53,11 +30,10 @@ class ValidationResult(BaseModel):
     problem_areas: List[ProblemArea] = []  # 문제 영역 목록
     details: Optional[Dict[str, Any]] = None
 
-
 class Button(BaseModel):
     """버튼 모델"""
     name: str = Field(..., min_length=1, max_length=14, description="버튼명")
-    type: ButtonType = Field(..., description="버튼 타입")
+    type: str = Field(..., description="버튼 타입")
     url_mobile: Optional[str] = Field(None, description="모바일 URL")
     url_pc: Optional[str] = Field(None, description="PC URL")
     scheme_android: Optional[str] = Field(None, description="안드로이드 스킴")
@@ -68,7 +44,6 @@ class Button(BaseModel):
         if not v or not v.strip():
             raise ValueError("버튼명은 빈 값일 수 없습니다")
         return v.strip()
-
 
 class AlimtalkTemplate(BaseModel):
     """알림톡 템플릿 모델"""
@@ -90,7 +65,6 @@ class AlimtalkTemplate(BaseModel):
         if v and len(v) > 5:
             raise ValueError("버튼은 최대 5개까지 가능합니다")
         return v
-
 
 class ValidationRequest(BaseModel):
     """검증 요청 모델"""
@@ -174,12 +148,22 @@ class ValidationResponse(BaseModel):
     validation_stage: str = "1차 검증"  # 검증 단계
     total_errors: int = 0
     total_warnings: int = 0
-
-class SystemStats(BaseModel):
-    """시스템 통계 모델"""
-    vector_db: Dict[str, Any]
-    validation_pipeline: Dict[str, Any]
-    service_status: str
+    
+    class Config:
+        # JSON 직렬화 시 필드명을 그대로 유지
+        alias_generator = None
+        allow_population_by_field_name = True
+    
+    def dict(self, **kwargs):
+        """JSON 직렬화를 위한 dict 메서드 오버라이드"""
+        return {
+            "success": self.success,
+            "message": self.message,
+            "problem_areas": [area.dict() for area in self.problem_areas],
+            "validation_stage": self.validation_stage,
+            "total_errors": self.total_errors,
+            "total_warnings": self.total_warnings
+        }
 
 
 # AI 서비스 관련 모델들
@@ -188,12 +172,10 @@ class ChatRequest(BaseModel):
     message: str
     model: Optional[str] = "gpt-4o-mini"
 
-
 class ChatResponse(BaseModel):
     """채팅 응답 모델"""
     response: str
     model: str
-
 
 class TemplateModificationRequest(BaseModel):
     """템플릿 수정 요청 모델"""
@@ -202,7 +184,6 @@ class TemplateModificationRequest(BaseModel):
     userMessage: str
     chat_history: List[Dict[str, Any]] = []
     variableList: List[str] = []
-
 
 class TemplateModificationResponse(BaseModel):
     """템플릿 수정 응답 모델"""
