@@ -327,21 +327,29 @@ class AlimtalkValidationService:
     
     async def _generate_alternatives_for_error(self, error: str, stage: str, template_content: str = "") -> List[str]:
         """AI를 활용한 오류별 동적 대안 생성"""
-        # 프롬프트 파일에서 대안 생성 프롬프트 가져오기
-        from validators.prompts import get_alternative_generation_prompt
-        
-        prompt = get_alternative_generation_prompt(stage, error, template_content)
-        response = await self.openai_service.generate_response(prompt)
-        
-        # 응답에서 대안 추출
-        alternatives = self._extract_alternatives_from_response(response)
-        
-        # 대안이 3개 미만이면 기본 대안으로 보완
-        if len(alternatives) < 3:
-            default_alternatives = self._get_default_alternatives(error, stage)
-            alternatives.extend(default_alternatives[:3-len(alternatives)])
-        
-        return alternatives[:3]  # 최대 3개까지만 반환
+        try:
+            # 프롬프트 파일에서 대안 생성 프롬프트 가져오기
+            from validators.prompts import get_alternative_generation_prompt
+            
+            prompt = get_alternative_generation_prompt(stage, error, template_content)
+            response = await self.openai_service.generate_response(prompt)
+            
+            print(f"AI 대안 생성 응답: {response}")  # 디버깅용 로그
+            
+            # 응답에서 대안 추출
+            alternatives = self._extract_alternatives_from_response(response)
+            print(f"추출된 대안: {alternatives}")  # 디버깅용 로그
+            
+            # 대안이 3개 미만이면 실패로 처리
+            if len(alternatives) < 3:
+                print("AI가 충분한 대안을 생성하지 못했습니다.")
+                return ["AI 대안 생성에 실패했습니다. 수동으로 수정해주세요."]
+            
+            return alternatives[:3]  # 최대 3개까지만 반환
+            
+        except Exception as e:
+            print(f"AI 대안 생성 중 오류 발생: {e}")
+            return ["AI 대안 생성에 실패했습니다. 수동으로 수정해주세요."]
     
     def _extract_alternatives_from_response(self, response: str) -> List[str]:
         """AI 응답에서 대안 추출"""
@@ -350,45 +358,23 @@ class AlimtalkValidationService:
         
         for line in lines:
             line = line.strip()
-            if line.startswith('대안') and ':' in line:
+            # 다양한 형식의 대안 추출 지원
+            if (line.startswith('대안') or line.startswith('-') or line.startswith('•') or 
+                line.startswith('1.') or line.startswith('2.') or line.startswith('3.')) and ':' in line:
                 alternative = line.split(':', 1)[1].strip()
                 if alternative and len(alternative) > 10:  # 너무 짧은 대안 제외
+                    alternatives.append(alternative)
+            # 콜론이 없는 경우도 처리 (단순 번호나 기호로 시작하는 경우)
+            elif (line.startswith('-') or line.startswith('•') or 
+                  line.startswith('1.') or line.startswith('2.') or line.startswith('3.')):
+                # 첫 번째 기호나 번호 제거
+                alternative = line[2:].strip() if len(line) > 2 else line.strip()
+                if alternative and len(alternative) > 10:
                     alternatives.append(alternative)
         
         return alternatives
     
-    def _get_default_alternatives(self, error: str, stage: str) -> List[str]:
-        """기본 대안 생성 (AI 실패 시 사용)"""
-        if "정보성 메시지" in error:
-            return [
-                "광고성 표현을 제거하고 순수 정보 전달 형태로 수정",
-                "객관적이고 중립적인 톤으로 템플릿 재작성",
-                "특정 행위 유도 문구를 안내성 표현으로 변경"
-            ]
-        elif "정형화된 템플릿" in error:
-            return [
-                "표준 알림톡 구조로 템플릿 재구성",
-                "일관된 패턴의 정형화된 템플릿으로 수정",
-                "계절/상황별 표현을 일반적 표현으로 변경"
-            ]
-        elif "변수 사용" in error:
-            return [
-                "개인화 변수를 포함한 템플릿으로 재작성",
-                "동적 변수 활용한 맞춤형 메시지로 변경",
-                "변수 규칙에 맞는 표준 템플릿으로 수정"
-            ]
-        elif "템플릿 작성" in error:
-            return [
-                "미리보기 메시지가 포함된 완전한 템플릿으로 재작성",
-                "서비스 광고 문구 제거한 순수 안내 템플릿으로 변경",
-                "알림톡 작성 가이드라인 준수 템플릿으로 수정"
-            ]
-        else:
-            return [
-                "알림톡 승인 기준에 맞는 완전한 템플릿으로 재작성",
-                "검증 통과 가능한 표준 템플릿으로 전면 수정",
-                "카카오 알림톡 가이드라인 준수 템플릿으로 변경"
-            ]
+    # 하드코딩된 기본 대안 함수 제거됨
 
 
 

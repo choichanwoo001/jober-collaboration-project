@@ -21,12 +21,12 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/alimtalk", tags=["알림톡 검증"])
+router = APIRouter(tags=["알림톡 검증"])
 
 # 전역 서비스 인스턴스
 validation_service = AlimtalkValidationService()
 
-@router.post("/validate")
+@router.post("/template/validate")
 async def validate_template(backend_request: Dict[str, Any]):
     """
     알림톡 템플릿 검증
@@ -49,6 +49,7 @@ async def validate_template(backend_request: Dict[str, Any]):
         result = await validation_service.validate_template(request)
         
         logger.info(f"검증 완료: {'성공' if result.success else '실패'}")
+        logger.info(f"응답 데이터: success={result.success}, problem_areas={len(result.problem_areas)}, total_errors={result.total_errors}, total_warnings={result.total_warnings}")
         
         # ValidationResponse가 이미 백엔드 구조와 일치하므로 직접 반환
         return result
