@@ -104,10 +104,9 @@ public class TemplateService {
                 .build();
 
         if (requestDto.getVariableList() != null && !requestDto.getVariableList().isEmpty()) {
-            for (TemplateValidationRequestDto.VariableDto variableDto : requestDto.getVariableList()) {
+            for (String variableKey : requestDto.getVariableList()) {
                 Var variable = Var.builder()
-                        .variableKey(variableDto.getVariableKey())
-                        .variableValue(variableDto.getVariableValue())
+                        .variableKey(variableKey)
                         .build();
                 template.addVariable(variable);
             }
