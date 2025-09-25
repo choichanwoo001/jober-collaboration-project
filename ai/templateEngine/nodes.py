@@ -110,22 +110,28 @@ async def search_templates_node(state: TemplateGenerationState) -> Dict[str, Any
                 keyword_query = " ".join(service_keywords)
                 logger.info(f"1단계: 서비스 키워드 '{keyword_query}'로 공용 템플릿 검색")
 
-                public_templates, public_max_sim = state["chromadb_service"].search_public_templates(
+                public_templates = state["chromadb_service"].search_templates(
+                    collection_name="pulblic_templates",
                     query_text=keyword_query,
-                    top_k=5
+                    top_k=5,
+                    result_format="legacy"
                 )
                 all_templates.extend(public_templates)
+                public_max_sim = max(t['similarity'] for t in public_templates) if public_templates else 0.0
                 max_similarity = max(max_similarity, public_max_sim)
                 logger.info(f"   공용 템플릿 검색 결과: {len(public_templates)}개, 최대 유사도: {public_max_sim:.3f}")
 
             # 2. 생성된 제목으로 공용 템플릿 검색
             if generated_title:
                 logger.info(f"2단계: 생성 제목 '{generated_title}'로 공용 템플릿 검색")
-                title_public_templates, title_public_sim = state["chromadb_service"].search_public_templates(
+                title_public_templates = state["chromadb_service"].search_templates(
+                    collection_name="pulblic_templates",
                     query_text=generated_title,
-                    top_k=3
+                    top_k=3,
+                    result_format="legacy"
                 )
                 all_templates.extend(title_public_templates)
+                title_public_sim = max(t['similarity'] for t in title_public_templates) if title_public_templates else 0.0
                 max_similarity = max(max_similarity, title_public_sim)
                 logger.info(f"   제목 기반 공용 템플릿 검색 결과: {len(title_public_templates)}개, 최대 유사도: {title_public_sim:.3f}")
 
@@ -135,24 +141,28 @@ async def search_templates_node(state: TemplateGenerationState) -> Dict[str, Any
 
             # 1. 해당 카테고리 내 승인된 템플릿 검색
             logger.info(f"1단계: 카테고리 '{category_sub}' 내에서 승인된 템플릿 검색")
-            category_templates, category_max_sim = state["chromadb_service"].search_approved_templates(
+            category_templates = state["chromadb_service"].search_templates(
+                collection_name="approved_templates",
                 query_text=user_message,
                 category_sub=category_sub,
                 top_k=5
             )
             all_templates.extend(category_templates)
+            category_max_sim = max(t['similarity'] for t in category_templates) if category_templates else 0.0
             max_similarity = max(max_similarity, category_max_sim)
             logger.info(f"   카테고리 내 검색 결과: {len(category_templates)}개, 최대 유사도: {category_max_sim:.3f}")
 
             # 2. 제목으로 전체 승인된 템플릿 검색 (보완)
             if generated_title:
                 logger.info(f"2단계: 생성 제목 '{generated_title}'로 전체 승인된 템플릿 검색")
-                title_templates, title_max_sim = state["chromadb_service"].search_approved_templates(
+                title_templates = state["chromadb_service"].search_templates(
+                    collection_name="approved_templates",
                     query_text=generated_title,
                     category_sub=None,  # 카테고리 제한 없음
                     top_k=3
                 )
                 all_templates.extend(title_templates)
+                title_max_sim = max(t['similarity'] for t in title_templates) if title_templates else 0.0
                 max_similarity = max(max_similarity, title_max_sim)
                 logger.info(f"   제목 기반 승인된 템플릿 검색 결과: {len(title_templates)}개, 최대 유사도: {title_max_sim:.3f}")
 
@@ -365,8 +375,11 @@ async def search_public_and_generate_node(state: TemplateGenerationState) -> Dic
     logger.info("=" * 60)
     logger.info("5b단계: 신규 생성 시작")
     try:
-        pulblic_templates = state["chromadb_service"].search_public_templates(
-            query_text=state["userMessage"], top_k=3
+        pulblic_templates = state["chromadb_service"].search_templates(
+            collection_name="pulblic_templates",
+            query_text=state["userMessage"],
+            top_k=3,
+            result_format="legacy"
         )
         hint = "pulblic_templates_based" if pulblic_templates else "from_scratch"
 
@@ -412,5 +425,7 @@ def finalize_result_node(state: TemplateGenerationState) -> Dict[str, Any]:
 
 def extract_variables_from_template(template_text: str) -> list[str]:
     if not template_text: return []
-    return sorted(list(set(re.findall(r'#\{([^}]+)\}', template_text))))
+    # #{변수명} 패턴만 추출 (통일된 형태)
+    variables = re.findall(r'#\{([^}]+)\}', template_text)
+    return sorted(list(set(variables)))
 

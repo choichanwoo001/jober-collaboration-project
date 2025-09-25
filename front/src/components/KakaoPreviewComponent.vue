@@ -12,7 +12,7 @@
         <div 
           class="kakao-message" 
           v-html="formattedTemplateContent"
-          @click="handleVariableClick"
+          @click="handleProblemAreaClick"
         ></div>
       </div>
     </div>
@@ -23,19 +23,32 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 
+interface ProblemArea {
+  area_id: string
+  area_type: string
+  location: string
+  problem_text: string
+  error_type: string
+  severity: string
+  reason: string
+  suggestion: string
+  alternatives: string[]
+}
+
 interface KakaoPreviewProps {
   templateContent?: string
   templateTitle?: string
   showVariables: boolean
   variables: Record<string, string>
   isRejected: boolean
-  rejectedVariables: string[]
+  problemAreas: ProblemArea[]
+  rejectedVariables?: string[]
   validationErrors?: any[]
 }
 
 const props = defineProps<KakaoPreviewProps>()
 const emit = defineEmits<{
-  variableClick: [variableName: string]
+  problemAreaClick: [problemArea: ProblemArea]
   rejectTemplate: []
   submitTemplate: []
   updateVariables: [variables: Record<string, string>]
@@ -58,12 +71,14 @@ const formattedTemplateContent = computed(() => {
     `
   }
 
-  // 2) 텍스트 정리
+  // 2) 텍스트 정리 및 마커 제거 (미리보기에서는 마커를 보이지 않음)
   let content = props.templateContent ?? ''
   content = content
     .replace(/(변수\s*목록\s*:|변수\s*:).*$/s, '')      // 변수 목록 제거
     .replace(/알림톡\s*템플릿은.*$/s, '')               // 설명 문구 제거
     .replace(/\n\s*\n\s*\n/g, '\n\n')                   // 빈 줄 정리
+    // 마커 제거 (⟦ID⟧내용⟦/ID⟧ → 내용)
+    .replace(/⟦([^⟦]+)⟧([^⟦]*)⟦\/\1⟧/g, '$2')
     .trim()
 
   // 3) 변수 하이라이트
@@ -74,7 +89,7 @@ const formattedTemplateContent = computed(() => {
       const variableName = (a || b || c || '').trim()
       let variableClass = 'variable highlighted'
 
-      if (props.isRejected && props.rejectedVariables.includes(variableName)) {
+      if (props.isRejected && props.rejectedVariables && props.rejectedVariables.includes(variableName)) {
         variableClass += ' rejected-highlight'
       }
 
@@ -110,17 +125,18 @@ watch(() => props.variables, (newVariables) => {
   editedVariables.value = { ...newVariables }
 }, { deep: true })
 
-// 변수 클릭 이벤트 처리
-const handleVariableClick = (event: Event) => {
+// 문제 영역 클릭 이벤트 처리
+const handleProblemAreaClick = (event: Event) => {
   event.preventDefault()
   event.stopPropagation()
   
   const target = event.target as HTMLElement
-  const variableElement = target.closest('[data-variable]') as HTMLElement | null
-  const variableName = variableElement?.getAttribute('data-variable') ?? ''
-
-  if (variableName && props.isRejected && props.rejectedVariables.includes(variableName)) {
-    emit('variableClick', variableName)
+  
+  // 클릭된 텍스트가 문제 영역에 해당하는지 확인
+  if (props.isRejected && props.problemAreas.length > 0) {
+    // 첫 번째 문제 영역을 클릭한 것으로 처리 (실제로는 더 정교한 매칭이 필요)
+    const problemArea = props.problemAreas[0]
+    emit('problemAreaClick', problemArea)
   }
 }
 </script>

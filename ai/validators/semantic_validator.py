@@ -144,9 +144,19 @@ class SemanticValidator:
                 logger.warning("approved_templates 검색 시 category_sub가 필요합니다.")
                 hits = []
             else:
-                hits, _ = self.chromadb_service.search_approved_templates(query_text=text, category_sub=category_sub, top_k=k)
+                hits = self.chromadb_service.search_templates(
+                    collection_name="approved_templates",
+                    query_text=text,
+                    category_sub=category_sub,
+                    top_k=k
+                )
         elif collection == "pulblic_templates":
-            hits = self.chromadb_service.search_public_templates(query_text=text, top_k=k)
+            hits = self.chromadb_service.search_templates(
+                collection_name="pulblic_templates",
+                query_text=text,
+                top_k=k,
+                result_format="legacy"
+            )
         else:
             logger.warning(f"알 수 없는 컬렉션 이름입니다: {collection}")
             hits = []

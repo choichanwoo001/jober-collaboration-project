@@ -22,7 +22,7 @@ class ValidationPipeline:
         # ✅ 의존성 주입으로 수정함.
         self.chromadb_service = chromadb_service
         self.constraint_validator = constraint_validator  # 외부에서 주입받음
-        self.semantic_validator = SemanticValidator(chromadb_service=chromadb_service)      # ChromaDB blacklist 컬렉션 사용
+        self.semantic_validator = SemanticValidator(chromadb_service=chromadb_service)
         
     def validate(self, template_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -45,6 +45,14 @@ class ValidationPipeline:
             'semantic_result': None,
             'final_result': None
         }
+        
+        # 템플릿에서 변수 추출하여 template_data에 추가
+        template_content = template_data.get('template_content', '')
+        if template_content:
+            import re
+            # #{변수명} 패턴만 추출 (통일된 형태)
+            detected_variables = re.findall(r'#\{([^}]+)\}', template_content)
+            template_data['detected_variables'] = list(set(detected_variables))
         
         # 1차 검증: 제약 검증
         print("🔍 1차 검증: 제약 검증 실행 중...")

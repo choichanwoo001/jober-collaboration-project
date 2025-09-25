@@ -77,17 +77,16 @@
             <!-- 카카오톡 미리보기와 반려 사이드바를 함께 관리하는 컨테이너 -->
             <div :class="['preview-and-sidebar-container', { 'with-rejection-sidebar': showRejectionSidebar }]">
               <!-- 카카오톡 미리보기 -->
-              <div class="kakao-preview-wrapper">
+              <div class="kakao-preview-wrapper" ref="kakaoPreviewRef">
                 <KakaoPreviewComponent
-                  :template-content="templateContent"
+                  :template-content="getPreviewTemplateContent()"
                   :template-title="templateTitle"
                   :show-variables="showVariables"
                   :variables="editedVariables"
-                  :is-modifying="false"
                   :is-rejected="isRejected"
+                  :problem-areas="problemAreas"
                   :rejected-variables="rejectedVariables"
-                  :validation-errors="validationErrors"
-                  @variable-click="handleVariableClick"
+                  @problem-area-click="handleProblemAreaClick"
                   @update-variables="updateVariables"
                   @submit-template="submitTemplate"
                 />
@@ -97,13 +96,15 @@
               <div class="rejection-sidebar-panel" v-if="showRejectionSidebar">
                 <RejectionSidebarComponent
                   :show="showRejectionSidebar"
-                  :current-variable="currentVariable"
+                  :current-problem-area="currentProblemArea"
                   :alternatives="currentAlternatives"
-                  :rejected-variables="rejectedVariables"
-                  :validation-errors="currentVariable ? currentValidationError : validationErrors"
+                  :problem-areas="problemAreas"
                   :validation-stage="validationStage"
+                  :total-errors="totalErrors"
+                  :total-warnings="totalWarnings"
+                  :alimtalk-height="alimtalkHeight"
                   @close="closeRejectionSidebar"
-                  @variable-click="handleVariableClick"
+                  @problem-area-click="handleProblemAreaClick"
                   @apply-alternative="applyAlternativeToTemplate"
                 />
               </div>
@@ -147,20 +148,20 @@ const router = useRouter()
 
 // 컴포넌트 refs
 const chatHistoryRef = ref<HTMLElement | null>(null)
+const kakaoPreviewRef = ref<HTMLElement | null>(null)
+const alimtalkHeight = ref<number>(0)
 
 const showVariables = ref(true)
 const showRejectionSidebar = ref(false)
 const isRejected = ref(false)
-const currentVariable = ref('')
+const currentProblemArea = ref<any>(null)
 const currentAlternatives = ref<any[]>([])
-// 사용자 직접 수정 기능 제거
-const rejectedVariables = ref<string[]>([])
-const validationErrors = ref<any[]>([])
-const currentValidationError = ref<any>(null)
+const problemAreas = ref<any[]>([])  // 문제 영역 목록
 const validationStage = ref<string>('') // 검증 단계 정보 추가
+const totalErrors = ref(0)
+const totalWarnings = ref(0)
+const rejectedVariables = ref<string[]>([]) // 반려된 변수 목록
 
-// 생성된 템플릿 데이터
-const generatedTemplate = ref<any>(null)
 const templateContent = ref('')
 const templateTitle = ref('')
 const templateVariables = ref<any[]>([])
@@ -232,26 +233,6 @@ const decrementModificationCount = () => {
 }
 
 
-// 수정 횟수 리셋 테스트 함수들 (개발자 도구에서 사용) resetModifications() -> 3으로 리셋
-const testResetModifications = () => {
-  const key = getSessionKey()
-  sessionStorage.setItem(key, '3')
-  remainingCorrections.value = 3
-  console.log('✅ 수정 횟수를 3으로 리셋했습니다.')
-}
-
-const testSetModifications = (count: number) => {
-  const key = getSessionKey()
-  sessionStorage.setItem(key, count.toString())
-  remainingCorrections.value = count
-  console.log(`✅ 수정 횟수를 ${count}로 설정했습니다.`)
-}
-
-// 전역으로 노출 (개발자 도구에서 사용 가능)
-if (typeof window !== 'undefined') {
-  ;(window as any).resetModifications = testResetModifications
-  ;(window as any).setModifications = testSetModifications
-}
 
 // 버전 관리
 const versions = ref([
@@ -273,14 +254,14 @@ onMounted(() => {
   const savedTemplate = sessionStorage.getItem('generatedTemplate')
   if (savedTemplate) {
     try {
-      generatedTemplate.value = JSON.parse(savedTemplate)
-      templateContent.value = generatedTemplate.value.templateContent
-      templateTitle.value = generatedTemplate.value.templateTitle || ''
-      templateVariables.value = generatedTemplate.value.variables
-      templateCategory.value = generatedTemplate.value.category
+      const generatedTemplate = JSON.parse(savedTemplate)
+      templateContent.value = generatedTemplate.templateContent
+      templateTitle.value = generatedTemplate.templateTitle || ''
+      templateVariables.value = generatedTemplate.variables
+      templateCategory.value = generatedTemplate.category
       // templateCategoryId는 더 이상 사용되지 않지만, 혹시 모를 오류 방지를 위해 기본값 설정
       templateCategoryId.value = 11 
-      userMessage.value = generatedTemplate.value.userMessage
+      userMessage.value = generatedTemplate.userMessage
       
       // 변수 값 초기화 (showVariables가 true이므로 변수값 설정)
       const initialVariables: Record<string, string> = {}
@@ -313,7 +294,10 @@ onMounted(() => {
         }
       ]
       
-      console.log('생성된 템플릿 로드됨:', generatedTemplate.value)
+      console.log('생성된 템플릿 로드됨:', generatedTemplate)
+      
+      // 템플릿 로드 후 알림톡 높이 측정
+      measureAlimtalkHeight()
     } catch (error) {
       console.error('템플릿 데이터 파싱 실패:', error)
       router.push('/')
@@ -326,265 +310,682 @@ onMounted(() => {
  
 
 
-// 변수 클릭 처리
-const handleVariableClick = (variableName: string) => {
-  if (isRejected.value && rejectedVariables.value.includes(variableName)) {
-    // 반려된 변수 클릭 시 - 대안 선택 사이드바 표시
-    currentVariable.value = variableName
-    
-    // 해당 변수에 대한 검증 오류 찾기
-    const variableErrors = validationErrors.value.filter(error => 
-      error.variable_name === variableName || 
-      (error.reason && error.reason.includes(variableName))
-    )
-    
-    if (variableErrors.length > 0) {
-      const error = variableErrors[0]
-      currentValidationError.value = {
-        variableName: variableName,
-        errorMessage: error.reason,
-        errorType: error.rule_type,
-        validationStage: error.stage,
-        rule: error.rule,
-        suggestion: error.suggestion,
-        severity: error.severity
-      }
-    } else {
-      currentValidationError.value = null
-    }
+// 문제 영역 클릭 처리
+const handleProblemAreaClick = (problemArea: any) => {
+  if (isRejected.value) {
+    // 문제 영역 클릭 시 - 대안 선택 사이드바 표시
+    currentProblemArea.value = problemArea
     
     // 대안 정보 설정 (백엔드에서 받은 대안)
-    currentAlternatives.value = []
+    currentAlternatives.value = problemArea.alternatives?.map((alt: string) => ({
+      text: alt,
+      selected: false
+    })) || []
+    
     showRejectionSidebar.value = true
   }
 }
 
 
 
-// 선택한 대안 적용 (기존 함수 - 호환성 유지)
-const applySelectedAlternative = (alternative: any) => {
-  console.log(`대안 적용: ${currentVariable.value}를 "${alternative.text}"로 대체`)
+
+// ID 마커 기반 편집 시스템 - 문제 영역을 마커로 감싸고 대안 적용
+const applyAlternativeToTemplate = (alternative: any, problemArea: any) => {
+  console.log('=== ID 마커 기반 대안 적용 시작 ===')
+  console.log('받은 이벤트 데이터:', { alternative, problemArea })
+  console.log('대안 텍스트:', alternative.text)
+  console.log('문제 영역 ID:', problemArea.area_id)
+  console.log('문제 텍스트:', problemArea.problem_text)
+  console.log('현재 템플릿 내용:', templateContent.value)
   
-  // 반려된 변수 목록에서 제거
-  const index = rejectedVariables.value.indexOf(currentVariable.value)
-  if (index > -1) {
-    rejectedVariables.value.splice(index, 1)
-  }
-  
-  // 모든 반려된 변수가 해결되면 반려 상태 해제
-  if (rejectedVariables.value.length === 0) {
-    isRejected.value = false
-    showRejectionSidebar.value = false
-  } else {
-    // 다른 반려된 변수가 있으면 첫 번째로 이동
-    currentVariable.value = ''
-    currentAlternatives.value = []
+  try {
+    // 대안 텍스트에서 실제 수정 내용 추출
+    const alternativeText = alternative.text
+    const modifiedText = extractModifiedTextFromAlternative(alternativeText)
+    console.log('추출된 수정 텍스트:', modifiedText)
+    
+    if (!modifiedText) {
+      console.warn('수정할 텍스트를 추출할 수 없습니다:', alternativeText)
+      alert('대안 텍스트를 처리할 수 없습니다. 다시 시도해주세요.')
+      return
+    }
+    
+    // ID 마커 기반 교체 시도
+    const replacementSuccessful = applyWithMarkerSystem(problemArea, modifiedText)
+    
+    if (replacementSuccessful) {
+      console.log('✅ ID 마커 기반 템플릿 수정 성공!')
+      console.log('수정된 템플릿 내용:', templateContent.value)
+      
+      // 해당 문제 영역을 해결된 것으로 처리
+      const areaIndex = problemAreas.value.findIndex(area => area.area_id === problemArea.area_id)
+      if (areaIndex > -1) {
+        problemAreas.value.splice(areaIndex, 1)
+        console.log('문제 영역 제거됨:', problemArea.area_id)
+      }
+      
+      // 모든 문제 영역이 해결되면 반려 상태 해제
+      if (problemAreas.value.length === 0) {
+        isRejected.value = false
+        showRejectionSidebar.value = false
+        console.log('모든 문제 영역 해결됨, 반려 상태 해제')
+      }
+      
+      // 사용자에게 성공 메시지 표시
+      setTimeout(() => {
+        alert('✅ 대안이 성공적으로 적용되었습니다!')
+      }, 100)
+      
+    } else {
+      console.error('❌ ID 마커 기반 교체 실패')
+      console.log('문제 영역 정보:', problemArea)
+      console.log('수정할 텍스트:', modifiedText)
+      console.log('현재 템플릿:', templateContent.value)
+      
+      // 사용자에게 실패 메시지 표시
+      setTimeout(() => {
+        alert('❌ 대안 적용에 실패했습니다. 수동으로 수정해주세요.')
+      }, 100)
+    }
+    
+  } catch (error) {
+    console.error('대안 적용 중 오류 발생:', error)
+    setTimeout(() => {
+      alert('대안 적용 중 오류가 발생했습니다. 다시 시도해주세요.')
+    }, 100)
   }
 }
 
-// 템플릿에 대안 적용 (새로운 함수)
-const applyAlternativeToTemplate = (alternative: any, error: any) => {
-  console.log('템플릿에 대안 적용:', alternative.text, '오류:', error.reason)
+// ID 마커 기반 편집 시스템 구현 (다중 수정 지원)
+const applyWithMarkerSystem = (problemArea: any, modifiedText: string): boolean => {
+  console.log('=== ID 마커 기반 편집 시스템 시작 (다중 수정 지원) ===')
   
-  // 대안에 따라 템플릿 수정 로직 실행
-  if (alternative.text.includes('변수를 추가')) {
-    // 변수 추가 로직
-    applyVariableAddition(alternative)
-  } else if (alternative.text.includes('재작성') || alternative.text.includes('수정')) {
-    // 템플릿 전체 수정 로직
-    applyTemplateRewrite(alternative, error)
-  } else {
-    // 기본 수정 로직
-    applyGenericFix(alternative, error)
+  const markerId = problemArea.area_id || `ERR${Date.now()}`
+  const originalText = problemArea.problem_text
+  
+  console.log('마커 ID:', markerId)
+  console.log('원본 텍스트:', originalText)
+  console.log('수정할 텍스트:', modifiedText)
+  console.log('현재 템플릿에 마커 존재 여부:', templateContent.value.includes(`⟦${markerId}⟧`))
+  
+  // 1. 다중 수정을 위한 마커 업데이트 시도 (기존 마커가 있는 경우)
+  if (templateContent.value.includes(`⟦${markerId}⟧`)) {
+    console.log('기존 마커 발견, 다중 수정 모드')
+    const updateResult = updateMarkerForMultipleEdits(problemArea, modifiedText)
+    if (updateResult) {
+      console.log('✅ 다중 수정 마커 업데이트 성공')
+      return true
+    }
   }
   
-  // 해당 오류를 해결된 것으로 처리
-  const errorIndex = validationErrors.value.findIndex(e => e.reason === error.reason)
-  if (errorIndex > -1) {
-    validationErrors.value.splice(errorIndex, 1)
+  // 2. ID 마커로 감싸기 시도 (새로운 마커 생성)
+  const markerResult = tryMarkerWrapping(markerId, originalText, modifiedText, problemArea)
+  if (markerResult.success) {
+    console.log('✅ ID 마커 기반 교체 성공')
+    templateContent.value = markerResult.template
+    return true
   }
   
-  // 모든 오류가 해결되면 반려 상태 해제
-  if (validationErrors.value.length === 0) {
-    isRejected.value = false
-    showRejectionSidebar.value = false
-    rejectedVariables.value = []
+  // 3. 백업 앵커 시스템 시도
+  const anchorResult = tryContextAnchorSystem(problemArea, modifiedText)
+  if (anchorResult.success) {
+    console.log('✅ 백업 앵커 시스템 교체 성공')
+    templateContent.value = anchorResult.template
+    return true
   }
   
-  console.log('대안 적용 완료')
+  console.log('❌ 모든 교체 방법 실패')
+  return false
 }
 
-// 변수 추가 적용
-const applyVariableAddition = (alternative: any) => {
-  // 검증 통과 가능한 완전한 템플릿으로 교체
-  if (alternative.text.includes('예약취소 안내')) {
-    templateTitle.value = '예약 취소 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{예약번호} 예약이 #{취소일시}에 취소 처리되었습니다.
-
-취소된 예약 정보:
-- 예약번호: #{예약번호}
-- 취소일시: #{취소일시}
-- 처리상태: 취소 완료
-
-문의사항이 있으시면 고객센터로 연락해 주세요.
-
-감사합니다.`
-    
-    templateVariables.value = ['고객명', '예약번호', '취소일시']
-  } else if (alternative.text.includes('개인화된 알림')) {
-    templateTitle.value = '서비스 처리 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{서비스명} 관련 처리가 #{처리일시}에 완료되었습니다.
-
-처리 내용:
-- 서비스: #{서비스명}
-- 처리일시: #{처리일시}
-- 상태: 완료
-
-추가 문의사항이 있으시면 연락 주세요.`
-    
-    templateVariables.value = ['고객명', '서비스명', '처리일시']
-  } else {
-    templateTitle.value = '안내 사항'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{내용} 관련하여 안내드립니다.
-
-담당자: #{담당자}
-
-문의사항이 있으시면 연락 주세요.`
-    
-    templateVariables.value = ['고객명', '내용', '담당자']
+// ID 마커로 감싸기 (권장 최우선 방법)
+const tryMarkerWrapping = (markerId: string, originalText: string, modifiedText: string, problemArea?: any): { success: boolean, template: string } => {
+  console.log('=== ID 마커로 감싸기 시도 ===')
+  
+  const template = templateContent.value
+  const markerStart = `⟦${markerId}⟧`
+  const markerEnd = `⟦/${markerId}⟧`
+  
+  // 1. 이미 마커가 있는지 확인
+  const existingMarkerPattern = new RegExp(`⟦${markerId}⟧([^⟦]*)⟦/${markerId}⟧`, 'g')
+  if (existingMarkerPattern.test(template)) {
+    console.log('기존 마커 발견, 마커 내부만 교체')
+    const newTemplate = template.replace(existingMarkerPattern, `${markerStart}${modifiedText}${markerEnd}`)
+    return { success: true, template: newTemplate }
   }
   
-  // 편집 가능한 변수 업데이트
-  const newVariables: Record<string, string> = {}
-  templateVariables.value.forEach((variable: string) => {
-    newVariables[variable] = `${variable} 값`
+  // 2. 원본 텍스트를 마커로 감싸기
+  if (template.includes(originalText)) {
+    console.log('원본 텍스트를 마커로 감싸기')
+    const newTemplate = template.replace(originalText, `${markerStart}${originalText}${markerEnd}`)
+    // 마커 내부를 수정된 텍스트로 교체
+    const finalTemplate = newTemplate.replace(`${markerStart}${originalText}${markerEnd}`, `${markerStart}${modifiedText}${markerEnd}`)
+    return { success: true, template: finalTemplate }
+  }
+  
+  // 3. 위치 기반으로 마커 삽입 시도
+  if (problemArea && problemArea.start_position !== undefined && problemArea.end_position !== undefined) {
+    console.log('위치 기반 마커 삽입 시도')
+    const beforeText = template.substring(0, problemArea.start_position)
+    const afterText = template.substring(problemArea.end_position)
+    const newTemplate = beforeText + `${markerStart}${modifiedText}${markerEnd}` + afterText
+    return { success: true, template: newTemplate }
+  }
+  
+  console.log('ID 마커로 감싸기 실패')
+  return { success: false, template: template }
+}
+
+// 백업 앵커 시스템 (내용 기반 앵커링)
+const tryContextAnchorSystem = (problemArea: any, modifiedText: string): { success: boolean, template: string } => {
+  console.log('=== 백업 앵커 시스템 시도 ===')
+  
+  const template = templateContent.value
+  const originalText = problemArea.problem_text
+  
+  // 1. 문맥 기반 매칭 시도
+  if (problemArea.search_methods) {
+    const contextResult = tryContextBasedMatching(problemArea, modifiedText)
+    if (contextResult.success) {
+      return contextResult
+    }
+  }
+  
+  // 2. 정확한 텍스트 매칭 시도
+  if (template.includes(originalText)) {
+    console.log('정확한 텍스트 매칭 성공')
+    const newTemplate = template.replace(originalText, modifiedText)
+    return { success: true, template: newTemplate }
+  }
+  
+  // 3. 유사도 기반 매칭 시도
+  const similarityResult = trySimilarityMatching(problemArea, modifiedText)
+  if (similarityResult.success) {
+    return similarityResult
+  }
+  
+  console.log('백업 앵커 시스템 실패')
+  return { success: false, template: template }
+}
+
+// 문맥 기반 매칭
+const tryContextBasedMatching = (problemArea: any, modifiedText: string): { success: boolean, template: string } => {
+  console.log('=== 문맥 기반 매칭 시도 ===')
+  
+  const template = templateContent.value
+  const searchMethods = problemArea.search_methods
+  
+  if (!searchMethods) {
+    return { success: false, template: template }
+  }
+  
+  const exactText = searchMethods.exact_text
+  const contextBefore = searchMethods.context_before || ''
+  const contextAfter = searchMethods.context_after || ''
+  
+  // 1. 문맥 + 정확한 텍스트 매칭
+  if (exactText && (contextBefore || contextAfter)) {
+    const fullPattern = contextBefore + exactText + contextAfter
+    if (template.includes(fullPattern)) {
+      console.log('문맥 + 정확한 텍스트 매칭 성공')
+      const newTemplate = template.replace(fullPattern, contextBefore + modifiedText + contextAfter)
+      return { success: true, template: newTemplate }
+    }
+  }
+  
+  // 2. 정확한 텍스트만 매칭
+  if (exactText && template.includes(exactText)) {
+    console.log('정확한 텍스트 매칭 성공')
+    const newTemplate = template.replace(exactText, modifiedText)
+    return { success: true, template: newTemplate }
+  }
+  
+  return { success: false, template: template }
+}
+
+// 유사도 기반 매칭
+const trySimilarityMatching = (problemArea: any, modifiedText: string): { success: boolean, template: string } => {
+  console.log('=== 유사도 기반 매칭 시도 ===')
+  
+  const template = templateContent.value
+  const originalText = problemArea.problem_text
+  
+  // 간단한 유사도 계산 (공백 제거 후 비교)
+  const normalizeText = (text: string) => text.replace(/\s+/g, '').toLowerCase()
+  const normalizedOriginal = normalizeText(originalText)
+  
+  // 템플릿을 단어 단위로 분할하여 유사한 부분 찾기
+  const words = template.split(/(\s+)/)
+  let bestMatch = { index: -1, similarity: 0 }
+  
+  for (let i = 0; i < words.length; i++) {
+    let candidate = ''
+    for (let j = i; j < Math.min(i + 10, words.length); j++) {
+      candidate += words[j]
+      const normalizedCandidate = normalizeText(candidate)
+      
+      // 간단한 유사도 계산 (공통 문자 비율)
+      const similarity = calculateSimilarity(normalizedOriginal, normalizedCandidate)
+      if (similarity > bestMatch.similarity && similarity > 0.7) {
+        bestMatch = { index: i, similarity }
+      }
+    }
+  }
+  
+  if (bestMatch.index >= 0) {
+    console.log('유사도 기반 매칭 성공, 유사도:', bestMatch.similarity)
+    // 유사한 부분을 찾아서 교체
+    const beforeIndex = template.indexOf(words[bestMatch.index])
+    const afterIndex = beforeIndex + words.slice(bestMatch.index, bestMatch.index + 10).join('').length
+    const newTemplate = template.substring(0, beforeIndex) + modifiedText + template.substring(afterIndex)
+    return { success: true, template: newTemplate }
+  }
+  
+  return { success: false, template: template }
+}
+
+// 유사도 계산 함수
+const calculateSimilarity = (str1: string, str2: string): number => {
+  const longer = str1.length > str2.length ? str1 : str2
+  const shorter = str1.length > str2.length ? str2 : str1
+  
+  if (longer.length === 0) return 1.0
+  
+  const editDistance = levenshteinDistance(longer, shorter)
+  return (longer.length - editDistance) / longer.length
+}
+
+// 레벤슈타인 거리 계산
+const levenshteinDistance = (str1: string, str2: string): number => {
+  const matrix = []
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i]
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1]
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        )
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length]
+}
+
+// 대안 텍스트에서 실제 수정될 텍스트 추출 (제약사항 태그와 설명 제거)
+const extractModifiedTextFromAlternative = (alternativeText: string): string | null => {
+  console.log('=== 대안 텍스트 추출 시작 ===')
+  console.log('원본 대안 텍스트:', alternativeText)
+  
+  // 1. 제약사항 태그 제거 (⟦constraint_...⟧...⟦/constraint_...⟧)
+  let cleanText = alternativeText.replace(/⟦constraint_[^⟦]+⟧([^⟦]*)⟦\/constraint_[^⟦]+⟧/g, '$1')
+  
+  // 2. 기타 마커 태그들 제거
+  cleanText = cleanText.replace(/⟦[^⟦]+⟧([^⟦]*)⟦\/[^⟦]+⟧/g, '$1')
+  
+  // 3. 스마트 설명형 텍스트 제거 (패턴 기반)
+  cleanText = removeExplanatoryText(cleanText)
+  
+  // 4. 콜론(:) 기반 추출 시도
+  const colonIndex = cleanText.indexOf(':')
+  if (colonIndex !== -1) {
+    const extractedText = cleanText.substring(colonIndex + 1).trim()
+    console.log('콜론 기반 추출 결과:', extractedText)
+    
+    // 추출된 텍스트가 의미있는 내용인지 확인
+    if (isMeaningfulContent(extractedText)) {
+      console.log('콜론 기반 추출 성공:', extractedText)
+      return extractedText
+    }
+  }
+  
+  // 5. 다양한 패턴으로 추출 시도
+  const patterns = [
+    /대안\d+-\d+:\s*(.+)/,  // "대안1-1: 텍스트" 형식
+    /대안\d+:\s*(.+)/,      // "대안1: 텍스트" 형식
+    /실제 수정될 텍스트 예시[:\s]*["']([^"']+)["']/,
+    /실제 수정될 텍스트 예시[:\s]*([^-\n]+)/,
+    /예시[:\s]*["']([^"']+)["']/,
+    /수정[:\s]*["']([^"']+)["']/,
+    /^(.+)$/  // 마지막으로 전체 텍스트를 그대로 사용
+  ]
+  
+  for (let i = 0; i < patterns.length; i++) {
+    const pattern = patterns[i]
+    const match = cleanText.match(pattern)
+    if (match && match[1]) {
+      const extractedText = match[1].trim()
+      console.log(`패턴 ${i + 1}으로 추출된 텍스트:`, extractedText)
+      
+      // 의미있는 내용인지 확인
+      if (isMeaningfulContent(extractedText)) {
+        console.log(`패턴 ${i + 1} 추출 성공:`, extractedText)
+        return extractedText
+      }
+    }
+  }
+  
+  // 6. 정리된 텍스트가 의미있는 내용인지 확인
+  const finalText = cleanText.trim()
+  if (isMeaningfulContent(finalText)) {
+    console.log('정리된 텍스트 반환:', finalText)
+    return finalText
+  }
+  
+  // 7. 모든 방법이 실패하면 원본 텍스트를 그대로 반환 (최후의 수단)
+  console.log('모든 패턴 실패, 원본 텍스트 반환:', alternativeText)
+  return alternativeText.trim()
+}
+
+// 설명형 텍스트를 제거하는 스마트한 함수
+const removeExplanatoryText = (text: string): string => {
+  // 설명형 텍스트 패턴들 (더 범용적)
+  const explanatoryPatterns = [
+    // 작업 설명 패턴
+    /[^.]*를\s*(삭제|제거|변경|수정|교체|대체)하고[^.]*\.\s*/g,
+    /[^.]*로\s*(변경|수정|교체|대체)합니다[^.]*\.\s*/g,
+    /[^.]*를\s*(삭제|제거|변경|수정|교체|대체)합니다[^.]*\.\s*/g,
+    
+    // 과정 설명 패턴
+    /변경될\s*부분[^.]*\.\s*/g,
+    /실제\s*적용되어야\s*할\s*부분[^.]*\.\s*/g,
+    /수정되어야\s*할\s*부분[^.]*\.\s*/g,
+    /교체되어야\s*할\s*부분[^.]*\.\s*/g,
+    
+    // 메타 설명 패턴
+    /과정이나[^.]*\.\s*/g,
+    /태그나[^.]*\.\s*/g,
+    /미리보기에[^.]*\.\s*/g,
+    /사용자가\s*보는건[^.]*\.\s*/g,
+    /사용자에게\s*보이는[^.]*\.\s*/g,
+    /화면에\s*표시되는[^.]*\.\s*/g,
+    
+    // 지시사항 패턴
+    /잘하자\s*/g,
+    /주의하자\s*/g,
+    /기억하자\s*/g,
+    /명심하자\s*/g,
+    
+    // 기술적 설명 패턴
+    /이\s*내용이[^.]*\.\s*/g,
+    /이\s*부분이[^.]*\.\s*/g,
+    /이\s*텍스트가[^.]*\.\s*/g,
+    /이\s*문장이[^.]*\.\s*/g,
+    
+    // 조건부 설명 패턴
+    /만약[^.]*\.\s*/g,
+    /만약에[^.]*\.\s*/g,
+    /경우에[^.]*\.\s*/g,
+    /상황에[^.]*\.\s*/g,
+    
+    // 시간/순서 설명 패턴
+    /먼저[^.]*\.\s*/g,
+    /그다음[^.]*\.\s*/g,
+    /그리고[^.]*\.\s*/g,
+    /또한[^.]*\.\s*/g,
+    /추가로[^.]*\.\s*/g,
+    
+    // 목적 설명 패턴
+    /목적으로[^.]*\.\s*/g,
+    /위해[^.]*\.\s*/g,
+    /위해서[^.]*\.\s*/g,
+    /때문에[^.]*\.\s*/g,
+    
+    // 결과 설명 패턴
+    /결과적으로[^.]*\.\s*/g,
+    /최종적으로[^.]*\.\s*/g,
+    /따라서[^.]*\.\s*/g,
+    /그러므로[^.]*\.\s*/g,
+    
+    // 예시 설명 패턴
+    /예를\s*들어[^.]*\.\s*/g,
+    /예시로[^.]*\.\s*/g,
+    /예시는[^.]*\.\s*/g,
+    /예시가[^.]*\.\s*/g,
+    
+    // 비교 설명 패턴
+    /기존의[^.]*\.\s*/g,
+    /원래의[^.]*\.\s*/g,
+    /이전의[^.]*\.\s*/g,
+    /과거의[^.]*\.\s*/g,
+    /새로운[^.]*\.\s*/g,
+    /다른[^.]*\.\s*/g,
+    
+    // 일반적인 설명 패턴
+    /이것은[^.]*\.\s*/g,
+    /저것은[^.]*\.\s*/g,
+    /그것은[^.]*\.\s*/g,
+    /이런[^.]*\.\s*/g,
+    /저런[^.]*\.\s*/g,
+    /그런[^.]*\.\s*/g
+  ]
+  
+  let cleanedText = text
+  explanatoryPatterns.forEach(pattern => {
+    cleanedText = cleanedText.replace(pattern, '')
   })
-  editedVariables.value = newVariables
+  
+  return cleanedText.trim()
 }
 
-// 템플릿 재작성 적용
-const applyTemplateRewrite = (alternative: any, error: any) => {
-  if (alternative.text.includes('예약취소 확인')) {
-    templateTitle.value = '예약 취소 확인'
-    templateContent.value = `안녕하세요, #{고객명}님.
+// 의미있는 내용인지 판단하는 함수
+const isMeaningfulContent = (text: string): boolean => {
+  if (!text || text.length < 2) return false
+  
+  // 특수문자만 있는 경우 제외
+  if (/^[^\w가-힣]*$/.test(text)) return false
+  
+  // 설명형 키워드가 포함된 경우 제외
+  const explanatoryKeywords = [
+    '삭제', '제거', '변경', '수정', '교체', '대체',
+    '과정', '태그', '미리보기', '사용자', '화면',
+    '잘하자', '주의', '기억', '명심',
+    '먼저', '그다음', '그리고', '또한', '추가로',
+    '목적', '위해', '때문에', '결과', '최종',
+    '예를', '예시', '기존', '원래', '이전',
+    '이것은', '저것은', '그것은', '이런', '저런'
+  ]
+  
+  const hasExplanatoryKeyword = explanatoryKeywords.some(keyword => 
+    text.includes(keyword)
+  )
+  
+  if (hasExplanatoryKeyword) return false
+  
+  // 실제 내용으로 보이는 패턴 확인
+  const contentPatterns = [
+    /안녕하세요/,  // 인사말
+    /고객님/,      // 고객 호칭
+    /회원님/,      // 회원 호칭
+    /브랜드/,      // 브랜드 언급
+    /상품/,        // 상품 언급
+    /행사/,        // 행사 언급
+    /할인/,        // 할인 언급
+    /쿠폰/,        // 쿠폰 언급
+    /이벤트/,      // 이벤트 언급
+    /특별/,        // 특별 언급
+    /다양한/,      // 다양한 언급
+    /사랑스러운/,  // 감정 표현
+    /컬러/,        // 컬러 언급
+    /패턴/,        // 패턴 언급
+    /네덜란드/,    // 국가명
+    /오일릴리/,    // 브랜드명
+    /이월행사/     // 특정 행사명
+  ]
+  
+  // 실제 내용 패턴이 포함된 경우 유효
+  const hasContentPattern = contentPatterns.some(pattern => 
+    pattern.test(text)
+  )
+  
+  return hasContentPattern
+}
 
-예약 취소 요청이 정상적으로 처리되었습니다.
+// 마커 제거 및 최종 본문 확정 (제출 시에만 사용)
+const removeAllMarkers = (): string => {
+  console.log('=== 모든 마커 제거 및 최종 본문 확정 ===')
+  
+  let template = templateContent.value
+  
+  // 모든 마커 패턴 제거 (⟦ID⟧내용⟦/ID⟧ → 내용)
+  const markerPattern = /⟦([^⟦]+)⟧([^⟦]*)⟦\/\1⟧/g
+  template = template.replace(markerPattern, '$2')
+  
+  // 추가 정리: 설명형 텍스트 제거
+  template = removeExplanatoryText(template)
+  
+  console.log('마커 제거 완료')
+  console.log('최종 템플릿:', template)
+  
+  return template
+}
 
-취소 정보:
-- 예약번호: #{예약번호}
-- 취소일시: #{취소일시}
-- 환불예정일: #{환불예정일}
+// 미리보기용 템플릿 내용 (마커 제거, 사용자에게 보이는 깔끔한 버전)
+const getPreviewTemplateContent = (): string => {
+  let content = templateContent.value
+  
+  // 마커 제거 (⟦ID⟧내용⟦/ID⟧ → 내용)
+  const markerPattern = /⟦([^⟦]+)⟧([^⟦]*)⟦\/\1⟧/g
+  content = content.replace(markerPattern, '$2')
+  
+  // 설명성 텍스트 제거
+  content = removeExplanatoryText(content)
+  
+  return content
+}
 
-환불은 #{환불예정일}에 처리될 예정입니다.
-
-문의사항이 있으시면 고객센터로 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '예약번호', '취소일시', '환불예정일']
-  } else if (alternative.text.includes('서비스 안내')) {
-    templateTitle.value = '서비스 이용 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{서비스명} 이용과 관련하여 안내드립니다.
-
-안내 내용:
-- 서비스명: #{서비스명}
-- 처리일시: #{처리일시}
-- 담당자: #{담당자명}
-
-추가 문의사항이 있으시면 연락 주세요.`
-    
-    templateVariables.value = ['고객명', '서비스명', '처리일시', '담당자명']
-  } else {
-    templateTitle.value = '고객 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{안내내용}에 대해 안내드립니다.
-
-상세 정보:
-- 처리일시: #{처리일시}
-- 담당부서: #{담당부서}
-- 연락처: #{연락처}
-
-문의사항이 있으시면 언제든 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '안내내용', '처리일시', '담당부서', '연락처']
+// 다중 수정 시 안정적인 위치 찾기
+const findStablePosition = (problemArea: any): { start: number, end: number } | null => {
+  console.log('=== 안정적인 위치 찾기 ===')
+  
+  const template = templateContent.value
+  const originalText = problemArea.problem_text
+  
+  // 1. 마커 기반 위치 찾기 (가장 안정적)
+  const markerId = problemArea.area_id
+  if (markerId) {
+    const markerPattern = new RegExp(`⟦${markerId}⟧([^⟦]*)⟦/${markerId}⟧`, 'g')
+    const match = markerPattern.exec(template)
+    if (match) {
+      const start = match.index + `⟦${markerId}⟧`.length
+      const end = start + match[1].length
+      console.log('마커 기반 위치 찾기 성공:', { start, end })
+      return { start, end }
+    }
   }
   
-  // 편집 가능한 변수 업데이트
-  const newVariables: Record<string, string> = {}
-  templateVariables.value.forEach((variable: string) => {
-    newVariables[variable] = `${variable} 값`
-  })
-  editedVariables.value = newVariables
-}
-
-// 일반적인 수정 적용
-const applyGenericFix = (alternative: any, error: any) => {
-  if (alternative.text.includes('순수 정보 전달')) {
-    templateTitle.value = '안내 사항'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{안내사항}에 대해 안내드립니다.
-
-상세 내용:
-- 처리일시: #{처리일시}
-- 담당자: #{담당자}
-
-문의사항이 있으시면 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '안내사항', '처리일시', '담당자']
-  } else if (alternative.text.includes('표준 알림톡 구조')) {
-    templateTitle.value = '알림 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{처리내용}이 완료되었습니다.
-
-처리 정보:
-- 처리일시: #{처리일시}
-- 처리결과: #{처리결과}
-
-추가 문의사항이 있으시면 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '처리내용', '처리일시', '처리결과']
-  } else {
-    // 기본 승인 가능한 템플릿
-    templateTitle.value = '서비스 안내'
-    templateContent.value = `안녕하세요, #{고객명}님.
-
-#{서비스내용} 관련하여 안내드립니다.
-
-안내 사항:
-- 처리일시: #{처리일시}
-- 상태: #{처리상태}
-
-문의사항이 있으시면 고객센터로 연락해 주세요.`
-    
-    templateVariables.value = ['고객명', '서비스내용', '처리일시', '처리상태']
+  // 2. 문맥 기반 위치 찾기
+  if (problemArea.search_methods) {
+    const contextResult = findContextBasedPosition(problemArea)
+    if (contextResult) {
+      return contextResult
+    }
   }
   
-  // 편집 가능한 변수 업데이트
-  const newVariables: Record<string, string> = {}
-  templateVariables.value.forEach((variable: string) => {
-    newVariables[variable] = `${variable} 값`
-  })
-  editedVariables.value = newVariables
+  // 3. 텍스트 기반 위치 찾기
+  const textIndex = template.indexOf(originalText)
+  if (textIndex !== -1) {
+    const start = textIndex
+    const end = textIndex + originalText.length
+    console.log('텍스트 기반 위치 찾기 성공:', { start, end })
+    return { start, end }
+  }
+  
+  console.log('안정적인 위치 찾기 실패')
+  return null
 }
+
+// 문맥 기반 위치 찾기
+const findContextBasedPosition = (problemArea: any): { start: number, end: number } | null => {
+  const template = templateContent.value
+  const searchMethods = problemArea.search_methods
+  
+  if (!searchMethods) return null
+  
+  const exactText = searchMethods.exact_text
+  const contextBefore = searchMethods.context_before || ''
+  const contextAfter = searchMethods.context_after || ''
+  
+  // 문맥 + 정확한 텍스트로 위치 찾기
+  if (exactText && (contextBefore || contextAfter)) {
+    const fullPattern = contextBefore + exactText + contextAfter
+    const matchIndex = template.indexOf(fullPattern)
+    if (matchIndex !== -1) {
+      const start = matchIndex + contextBefore.length
+      const end = start + exactText.length
+      console.log('문맥 기반 위치 찾기 성공:', { start, end })
+      return { start, end }
+    }
+  }
+  
+  // 정확한 텍스트만으로 위치 찾기
+  if (exactText) {
+    const matchIndex = template.indexOf(exactText)
+    if (matchIndex !== -1) {
+      const start = matchIndex
+      const end = matchIndex + exactText.length
+      console.log('정확한 텍스트 위치 찾기 성공:', { start, end })
+      return { start, end }
+    }
+  }
+  
+  return null
+}
+
+// 다중 수정 시 마커 업데이트
+const updateMarkerForMultipleEdits = (problemArea: any, modifiedText: string): boolean => {
+  console.log('=== 다중 수정을 위한 마커 업데이트 ===')
+  
+  const markerId = problemArea.area_id || `ERR${Date.now()}`
+  const template = templateContent.value
+  
+  // 기존 마커가 있는지 확인하고 업데이트
+  const markerPattern = new RegExp(`⟦${markerId}⟧([^⟦]*)⟦/${markerId}⟧`, 'g')
+  if (markerPattern.test(template)) {
+    console.log('기존 마커 업데이트')
+    const newTemplate = template.replace(markerPattern, `⟦${markerId}⟧${modifiedText}⟦/${markerId}⟧`)
+    templateContent.value = newTemplate
+    return true
+  }
+  
+  // 새 마커 생성
+  const position = findStablePosition(problemArea)
+  if (position) {
+    console.log('새 마커 생성')
+    const beforeText = template.substring(0, position.start)
+    const afterText = template.substring(position.end)
+    const newTemplate = beforeText + `⟦${markerId}⟧${modifiedText}⟦/${markerId}⟧` + afterText
+    templateContent.value = newTemplate
+    return true
+  }
+  
+  return false
+}
+
+
+
 
 // 반려 사이드바 닫기
 const closeRejectionSidebar = () => {
   showRejectionSidebar.value = false
   isRejected.value = false
-  rejectedVariables.value = []
-  validationErrors.value = []
-  currentVariable.value = ''
+  problemAreas.value = []
+  currentProblemArea.value = null
   currentAlternatives.value = []
-  currentValidationError.value = null
+  totalErrors.value = 0
+  totalWarnings.value = 0
 }
 
 // 변수 업데이트
@@ -651,9 +1052,12 @@ const submitTemplate = async () => {
       variableKey: k,
       variableValue: String(v ?? ''),
     }))
+    // 마커 제거 후 최종 템플릿 확정
+    const finalTemplate = removeAllMarkers()
+    
     // 백엔드로 템플릿 검증 요청
     const response = await templateApi.validateTemplate(
-      templateContent.value,
+      finalTemplate,
       variableList,
       templateCategory.value,
       userMessage.value,
@@ -661,6 +1065,13 @@ const submitTemplate = async () => {
     )
     
     console.log('템플릿 검증 응답:', response.data)
+    console.log('응답 구조 확인:', {
+      success: response.data.success,
+      problem_areas: response.data.problem_areas,
+      validation_stage: response.data.validation_stage,
+      total_errors: response.data.total_errors,
+      total_warnings: response.data.total_warnings
+    })
     
     if (response.data.success) {
       // 검증 성공 - 성공 페이지로 이동
@@ -675,58 +1086,60 @@ const submitTemplate = async () => {
       console.log('템플릿 검증 실패:', response.data.message)
       console.log('전체 검증 응답:', response.data)
       
-      // 백엔드에서 전달된 상세한 검증 결과 처리
-      const validationResults = response.data.validation_results || []
-      const stage = response.data.validationStage || '1차 검증'
+      // 백엔드에서 전달된 문제 영역 처리
+      const problemAreasData = response.data.problem_areas || []
+      const validationStageData = response.data.validation_stage || '검증'
+      const totalErrorsData = response.data.total_errors || 0
+      const totalWarningsData = response.data.total_warnings || 0
       
-      console.log('검증 결과:', validationResults)
-      console.log('검증 단계:', stage)
+      console.log('문제 영역:', problemAreasData)
+      console.log('검증 단계:', validationStageData)
+      console.log('총 오류:', totalErrorsData, '총 경고:', totalWarningsData)
       
-      // 검증 결과에서 반려된 변수들과 상세 정보 추출
+      // 문제 영역 정보 저장 (position 정보 포함)
+      problemAreas.value = problemAreasData.map((area: any) => ({
+        ...area,
+        start_position: area.start_position || area.startPosition,
+        end_position: area.end_position || area.endPosition
+      }))
+      validationStage.value = validationStageData
+      totalErrors.value = totalErrorsData
+      totalWarnings.value = totalWarningsData
+      
+      // 반려된 변수 추출 (변수 사용 규칙 오류가 있는 경우)
       const rejectedVars: string[] = []
-      const detailedErrors: any[] = []
-      
-      validationResults.forEach((result: any) => {
-        if (result.details && result.details.validation_details) {
-          result.details.validation_details.forEach((detail: any) => {
-            // 변수 관련 오류인 경우 반려된 변수 목록에 추가
-            if (detail.variable_name && detail.severity === 'error') {
-              rejectedVars.push(detail.variable_name)
-            }
-            
-            // 모든 상세 오류 정보 저장
-            detailedErrors.push({
-              rule_type: detail.rule_type,
-              rule: detail.rule,
-              reason: detail.reason,
-              suggestion: detail.suggestion,
-              severity: detail.severity,
-              variable_name: detail.variable_name || null,
-              stage: result.stage || '1차 검증'
+      problemAreasData.forEach((area: any) => {
+        if (area.error_type === 'variable_usage' && area.problem_text) {
+          // 변수명 추출 (예: #{변수명} 형태)
+          const variableMatches = area.problem_text.match(/#\{([^}]+)\}/g)
+          if (variableMatches) {
+            variableMatches.forEach((match: string) => {
+              const varName = match.replace(/#\{|\}/g, '')
+              if (!rejectedVars.includes(varName)) {
+                rejectedVars.push(varName)
+              }
             })
-          })
+          }
         }
       })
+      rejectedVariables.value = rejectedVars
       
-      // 중복 제거
-      rejectedVariables.value = [...new Set(rejectedVars)]
-      validationErrors.value = detailedErrors
-      validationStage.value = stage
+      console.log('반려된 변수:', rejectedVars)
+      
+      // 반려 상태 설정
       isRejected.value = true
       showRejectionSidebar.value = true
       
-      // 변수가 없어도 템플릿 전체 오류가 있으면 사이드바 표시
-      if (rejectedVariables.value.length === 0 && detailedErrors.length > 0) {
-        // 템플릿 전체를 문제 영역으로 표시
-        rejectedVariables.value = ['템플릿 내용']
-      }
-      
-      // 사용자에게 친화적인 안내 메시지 표시
-      alert(`템플릿 수정이 필요합니다 📝\n\n${stage}에서 ${rejectedVariables.value.length > 0 ? '일부 변수' : '내용'}에 문제가 발견되었습니다.\n오른쪽 사이드바에서 상세 내용과 수정 방법을 확인해주세요.`)
+      // 사용자에게 친화적인 안내 메시지 표시 (비동기 처리)
+      setTimeout(() => {
+        alert(`템플릿 수정이 필요합니다 📝\n\n${validationStage.value}에서 ${totalErrors.value}개 오류, ${totalWarnings.value}개 경고가 발견되었습니다.\n오른쪽 사이드바에서 상세 내용과 수정 방법을 확인해주세요.`)
+      }, 100)
     }
   } catch (error) {
     console.error('템플릿 검증 실패:', error)
-    alert('템플릿 검증 중 오류가 발생했습니다. 다시 시도해주세요.')
+    setTimeout(() => {
+      alert('템플릿 검증 중 오류가 발생했습니다. 다시 시도해주세요.')
+    }, 100)
   } finally {
     isValidating.value = false // 검증 완료
   }
@@ -928,6 +1341,22 @@ const scrollToBottom = () => {
     }
   })
 }
+
+// 알림톡 높이 측정 함수
+const measureAlimtalkHeight = () => {
+  nextTick(() => {
+    if (kakaoPreviewRef.value) {
+      alimtalkHeight.value = kakaoPreviewRef.value.offsetHeight
+      console.log('알림톡 높이 측정:', alimtalkHeight.value)
+    }
+  })
+}
+
+// 템플릿 내용이나 변수 변경 시 높이 재측정
+watch([templateContent, templateTitle, editedVariables, showVariables], () => {
+  measureAlimtalkHeight()
+}, { deep: true })
+
 </script>
 
 <style scoped>
@@ -1050,7 +1479,6 @@ const scrollToBottom = () => {
   width: 20rem;
   min-width: 20rem;
   max-width: 20rem;
-  max-height: 80vh; /* 카카오 미리보기와 동일한 최대 높이 */
   flex-shrink: 0;
   z-index: 10;
   align-self: flex-start; /* 상단 정렬 */
@@ -1176,10 +1604,6 @@ const scrollToBottom = () => {
 .template-description p {
   margin: 0;
 }
-
-
-
-
 
 /* ===== 채팅 관련 스타일 ===== */
 /* 채팅 이력 컨테이너 */
@@ -1468,8 +1892,6 @@ const scrollToBottom = () => {
   100% { transform: rotate(360deg); }
 }
 
-
-/* 수정 버튼 스타일 제거됨 */
 
 /* 변수값 표시 토글 스타일 */
 .variables-toggle {
