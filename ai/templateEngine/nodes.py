@@ -355,7 +355,6 @@ async def generate_with_reference_node(state: TemplateGenerationState) -> Dict[s
         )
         messages = prompt_builder.build()
         template = await state["openai_service"].chat_completion(messages)
-        
         logger.info("✅ 참고 템플릿 기반 생성 성공")
         return {"generated_template": template, "generation_hint": "reference_based"}
     except Exception as e:
@@ -379,7 +378,6 @@ async def search_public_and_generate_node(state: TemplateGenerationState) -> Dic
         )
         messages = prompt_builder.build()
         template = await state["openai_service"].chat_completion(messages)
-        
         logger.info(f"✅ 신규 생성 성공 (방식: {hint})")
         return {"generated_template": template, "generation_hint": hint, "pulblic_templates": pulblic_templates}
     except Exception as e:
