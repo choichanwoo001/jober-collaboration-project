@@ -4,9 +4,8 @@ LLM을 활용한 동적 규칙 검증 시스템
 
 이 모듈은 템플릿 검증 파이프라인의 첫 번째 단계로, 다음과 같은 검증을 수행합니다:
 1. 정보성 메시지 요건 검증
-2. 정형화된 템플릿 요건 검증
-3. 변수 사용 규칙 검증
-4. 기타 템플릿 작성 규칙 검증
+2. 변수 사용 규칙 검증
+3. 기타 템플릿 작성 규칙 검증
 """
 import re
 from typing import Dict, Any, List
@@ -18,7 +17,6 @@ try:
     from ..models.alimtalk_models import ValidationResult
     from ..services.openai_service import OpenAIService
     from .prompts.informational_message_prompt import get_informational_message_validation_prompt
-    from .prompts.standardized_template_prompt import get_standardized_template_validation_prompt
     from .prompts.variable_usage_prompt import get_variable_usage_validation_prompt
     from .prompts.template_writing_prompt import get_template_writing_validation_prompt
 except ImportError:
@@ -29,7 +27,6 @@ except ImportError:
     from models.alimtalk_models import ValidationResult
     from services.openai_service import OpenAIService
     from validators.prompts.informational_message_prompt import get_informational_message_validation_prompt
-    from validators.prompts.standardized_template_prompt import get_standardized_template_validation_prompt
     from validators.prompts.variable_usage_prompt import get_variable_usage_validation_prompt
     from validators.prompts.template_writing_prompt import get_template_writing_validation_prompt
 
@@ -59,9 +56,8 @@ class ConstraintValidator:
         
         검증 규칙:
         1. 정보성 메시지 요건
-        2. 정형화된 템플릿 요건  
-        3. 변수 사용 규칙
-        4. 기타 템플릿 작성 규칙
+        2. 변수 사용 규칙
+        3. 기타 템플릿 작성 규칙
         
         Args:
             template_data: 검증할 템플릿 데이터
@@ -79,7 +75,7 @@ class ConstraintValidator:
         logger.debug(f"입력 데이터 keys: {list(template_data.keys())}")
 
         try:
-            # 4개 검증 단계를 비동기로 병렬 실행
+            # 3개 검증 단계를 비동기로 병렬 실행
             import asyncio
             
             # 현재 이벤트 루프가 실행 중인지 확인
@@ -105,7 +101,7 @@ class ConstraintValidator:
             validation_details = []
             
             # 각 검증 결과를 순서대로 처리
-            step_names = ["정보성 메시지", "정형화된 템플릿", "변수 사용 규칙", "기타 템플릿 작성"]
+            step_names = ["정보성 메시지", "변수 사용 규칙", "기타 템플릿 작성"]
             
             for i, (step_name, result) in enumerate(zip(step_names, results), 1):
                 if isinstance(result, Exception):
@@ -163,7 +159,6 @@ class ConstraintValidator:
                     "validation_details": validation_details,
                     "rules_checked": [
                         "informational_message_requirements",
-                        "standardized_template_requirements", 
                         "variable_usage_rules",
                         "other_template_rules"
                     ]
@@ -192,10 +187,9 @@ class ConstraintValidator:
         """
         import asyncio
         
-        # 4개 검증을 병렬로 실행
+        # 3개 검증을 병렬로 실행
         tasks = [
             self._check_informational_message_requirements_async(template_data),
-            self._check_standardized_template_requirements_async(template_data),
             self._check_variable_usage_rules_async(template_data),
             self._check_other_template_rules_async(template_data)
         ]
@@ -218,7 +212,22 @@ class ConstraintValidator:
             
             # 비동기 함수 호출
             response = await self.openai_service.chat_completion([
-                {"role": "system", "content": "알림톡 템플릿 검증 전문가입니다. JSON 형식으로만 응답하세요."},
+                {"role": "system", "content": """알림톡 템플릿 정보성 메시지 요건 검증 전문가입니다.
+
+🔍 **검증 원칙**:
+1. 규칙을 정확히 이해하고 적용하세요
+2. 모호한 부분은 허용하는 방향으로 판단하세요
+3. 명확한 위반 사항만 오류로 분류하세요
+4. 광고성 메시지와 정보성 메시지를 정확히 구분하세요
+
+⚠️ **중요**: 
+- 서비스 이용에 필요한 안내는 허용됩니다
+- 일반적인 인사말과 정중한 표현은 허용됩니다
+- 쿠폰 발급이 서비스 이용 과정의 일부라면 허용될 수 있습니다
+- **제품 관리 조언이나 서비스 이용 안내는 허용됩니다** (예: "정기적인 유지보수와 관리로 제품의 수명과 효율을 극대화하세요")
+- **"혜택 암시"는 문제가 되지 않습니다** - 구체적인 혜택 제공만 금지됩니다
+
+JSON 형식으로만 응답하세요."""},
                 {"role": "user", "content": prompt}
             ])
             
@@ -248,48 +257,6 @@ class ConstraintValidator:
         
         return errors, warnings, details
 
-    async def _check_standardized_template_requirements_async(self, template_data: Dict[str, Any]) -> tuple[List[str], List[str], List[Dict[str, Any]]]:
-        """정형화된 템플릿 요건 검증 (비동기 버전)"""
-        errors, warnings, details = [], [], []
-        
-        # 검증 대상 데이터 추출 (제목, 내용)
-        templateContent = template_data.get('template_content', '')
-        templateTitle = template_data.get('template_title', '')
-        
-        try:
-            prompt = get_standardized_template_validation_prompt(templateTitle, templateContent)
-            
-            # 비동기 함수 호출
-            response = await self.openai_service.chat_completion([
-                {"role": "system", "content": "알림톡 템플릿 검증 전문가입니다. JSON 형식으로만 응답하세요."},
-                {"role": "user", "content": prompt}
-            ])
-            
-            try:
-                result = json.loads(response)
-                if not result.get('is_valid', True):
-                    for violation in result.get('violations', []):
-                        message = f"정형화된 템플릿 요건 위반: {violation.get('reason', '알 수 없는 사유')}"
-                        if violation.get('severity') == 'error':
-                            errors.append(message)
-                        else:
-                            warnings.append(message)
-                        details.append({
-                            "rule_type": "standardized_template",
-                            "rule": violation.get('rule', '알 수 없는 규칙'),
-                            "reason": violation.get('reason', '알 수 없는 사유'),
-                            "suggestion": violation.get('suggestion', '수정이 필요합니다'),
-                            "severity": violation.get('severity', 'error')
-                        })
-            except json.JSONDecodeError:
-                warnings.append("정형화된 템플릿 검증 응답 파싱 중 오류가 발생했습니다.")
-                
-        except Exception as e:
-            # 시스템 오류는 로그에만 기록하고 사용자에게는 일반적인 메시지만 표시
-            logger.warning(f"정형화된 템플릿 검증 중 예외 발생: {str(e)}")
-            warnings.append("정형화된 템플릿 검증 중 오류가 발생했습니다.")
-        
-        return errors, warnings, details
 
     async def _check_variable_usage_rules_async(self, template_data: Dict[str, Any]) -> tuple[List[str], List[str], List[Dict[str, Any]], List[str]]:
         """변수 사용 규칙 검증 (비동기 버전)"""
@@ -311,7 +278,29 @@ class ConstraintValidator:
             
             # 비동기 함수 호출
             response = await self.openai_service.chat_completion([
-                {"role": "system", "content": "알림톡 템플릿 변수 사용 검증 전문가입니다. JSON 형식으로만 응답하세요."},
+                {"role": "system", "content": """알림톡 템플릿 변수 사용 규칙 검증 전문가입니다.
+
+🔍 **검증 원칙**:
+1. 변수 사용 규칙을 정확히 이해하고 적용하세요
+2. 템플릿 본문의 변수 사용은 정상입니다
+3. 버튼명과 미리보기 메시지만 변수 사용 불가입니다
+4. 모호한 부분은 허용하는 방향으로 판단하세요
+
+⚠️ **중요 구분**:
+- ✅ 템플릿 본문: 변수 사용 가능 (예: "안녕하세요, {{고객명}}님")
+- ❌ 버튼명: 변수 사용 불가 (예: "{{쿠폰명}} 확인하기")
+- ❌ 미리보기: 변수 사용 불가 (예: "{{고객명}}님을 위한 혜택")
+
+**현재 템플릿**: 버튼명이나 미리보기 메시지가 없으므로 버튼/미리보기 변수 사용 검증은 적용하지 마세요!
+
+🎯 **정확한 판단 기준**:
+- 변수 개수가 40개 초과 시에만 오류
+- 템플릿이 변수로만 구성된 경우에만 오류 (일반 텍스트가 전혀 없는 경우)
+- 버튼명/미리보기에 변수가 있는 경우에만 오류
+
+**중요**: "안녕하세요, #{{회원님}}님. #{{올워크}}에서..."와 같이 일반 텍스트와 변수가 혼합된 템플릿은 정상입니다!
+
+JSON 형식으로만 응답하세요."""},
                 {"role": "user", "content": prompt}
             ])
             
@@ -360,7 +349,29 @@ class ConstraintValidator:
             
             # 비동기 함수 호출
             response = await self.openai_service.chat_completion([
-                {"role": "system", "content": "알림톡 템플릿 작성 규칙 검증 전문가입니다. JSON 형식으로만 응답하세요."},
+                {"role": "system", "content": """알림톡 템플릿 작성 규칙 검증 전문가입니다.
+
+🔍 **검증 원칙**:
+1. 템플릿 작성 규칙을 정확히 이해하고 적용하세요
+2. 일반적인 인사말과 정중한 표현은 허용됩니다
+3. 강한 광고성 표현만 금지 대상입니다
+4. 모호한 부분은 허용하는 방향으로 판단하세요
+
+⚠️ **허용되는 표현**:
+- "많은 이용 부탁드립니다", "감사합니다" (일반적인 인사말)
+- "서비스 이용 안내드립니다" (내용과 관련된 안내)
+- 정중하고 적절한 서비스 안내 문구
+
+❌ **금지되는 표현**:
+- "지금 바로", "특별 할인", "무료 체험" (강한 광고성)
+- 템플릿 내용과 전혀 무관한 문구
+
+🎯 **연령인증 관련**:
+- 템플릿에 "연령인증", "성인인증", "19세 이상" 등의 표현이 **있을 때만** 검토
+- 해당 표현이 **없으면** 이 규칙은 적용하지 마세요
+- 연령인증 관련 표현이 없는 템플릿에서 "연령인증 관련 표현이 포함되어 있지 않음" 오류를 발생시키지 마세요
+
+JSON 형식으로만 응답하세요."""},
                 {"role": "user", "content": prompt}
             ])
             

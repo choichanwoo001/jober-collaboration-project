@@ -22,7 +22,7 @@ class ValidationPipeline:
         # ✅ 의존성 주입으로 수정함.
         self.chromadb_service = chromadb_service
         self.constraint_validator = constraint_validator  # 외부에서 주입받음
-        self.semantic_validator = SemanticValidator(chromadb_service=chromadb_service)      # ChromaDB blacklist 컬렉션 사용
+        self.semantic_validator = SemanticValidator(chromadb_service=chromadb_service)
         
     def validate(self, template_data: Dict[str, Any]) -> Dict[str, Any]:
         """
