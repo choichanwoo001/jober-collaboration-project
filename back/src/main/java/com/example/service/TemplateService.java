@@ -71,6 +71,30 @@ public class TemplateService {
                 response.setValidation_results(validationResultsList);
             }
             
+            // problem_areas 정보를 validationErrors에 추가
+            Object problemAreas = aiValidationResult.get("problem_areas");
+            if (problemAreas instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> problemAreasList = (List<Map<String, Object>>) problemAreas;
+                List<TemplateValidationResponseDto.ValidationError> validationErrors = new ArrayList<>();
+                
+                for (Map<String, Object> problemArea : problemAreasList) {
+                    String reason = (String) problemArea.getOrDefault("reason", "알 수 없는 오류");
+                    String errorType = (String) problemArea.getOrDefault("error_type", "unknown");
+                    String severity = (String) problemArea.getOrDefault("severity", "error");
+                    Integer startPosition = (Integer) problemArea.get("start_position");
+                    Integer endPosition = (Integer) problemArea.get("end_position");
+                    
+                    TemplateValidationResponseDto.ValidationError validationError = 
+                        new TemplateValidationResponseDto.ValidationError(
+                            reason, reason, errorType, rejectionDetails.validationStage, startPosition, endPosition
+                        );
+                    validationErrors.add(validationError);
+                }
+                
+                response.setValidationErrors(validationErrors);
+            }
+            
             return response;
 
         } catch (Exception e) {

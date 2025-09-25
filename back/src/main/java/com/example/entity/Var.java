@@ -26,8 +26,6 @@ public class Var {
     @Column(name = "variable_key", nullable = false, length = 100)
     private String variableKey;
 
-
-
     @Builder
     public Var(String variableKey) {
         this.variableKey = variableKey;
