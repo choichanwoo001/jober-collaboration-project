@@ -63,22 +63,9 @@ class ChromaDBService:
         """
         if getattr(self, "_initialized", False):
             return
-        # 예: 블랙리스트/화이트리스트 컬렉션 미리 로드
-        self._get_or_create_collection("blacklist")
-        self._get_or_create_collection("whitelist")
+        # 초기화 완료 표시
         self._initialized = True
 
-    def _get_or_create_collection(self, collection_name: str):
-        """
-        컬렉션 가져오기 또는 생성
-        """
-        if not HAS_CHROMADB or self.client is None:
-            return None
-
-        try:
-            return self.client.get_or_create_collection(name=collection_name)
-        except Exception:
-            return None
 
     def search_public_templates(self, query_text: str, top_k: int = 3) -> List[Dict]:
         logger.info("  - 검색 대상: 공용 템플릿")

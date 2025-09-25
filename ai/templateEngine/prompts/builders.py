@@ -323,39 +323,6 @@ class TypePromptBuilder(BasePromptBuilder):
             }
         ]
         return prompt
-# @TODO: TypePromptBuilder langGraph 동작 확인 시, 주석 버전 삭제하기
-# class TypePromptBuilder(BasePromptBuilder):
-#     """메시지 유형 분류 프롬프트 빌더"""
-#     def build(self) -> List[Dict]:
-#         system_prompt = """
-# 당신은 카카오 알림톡 메시지 유형 분류 전문가입니다.
-# 메시지를 다음 4가지 유형으로 분류해주세요:
-#
-# 1. BASIC: 기본 정보만 포함 (이름, 일시, 금액 등)
-# 2. EXTRA_INFO: 기본 정보 + 부가 설명이나 안내사항
-# 3. CHANNEL_ADD: 기본 정보 + 채널 추가/링크 유도
-# 4. HYBRID: 기본 정보 + 부가 설명 + 채널 링크
-#
-# 분석 요소:
-# - has_channel_link: 채널톡, 카카오톡 채널, 웹사이트 링크 포함 여부
-# - has_extra_info: 추가 안내사항, 주의사항, 부가 설명 포함 여부
-#
-# JSON 형식으로 응답하세요:
-# {
-#     "type": "분류 결과",
-#     "has_channel_link": true/false,
-#     "has_extra_info": true/false,
-#     "explain_type": "분류 이유 설명"
-# }
-# """
-#
-#         messages = [
-#             {"role": "system", "content": system_prompt},
-#             *self._build_hint_messages(),
-#             {"role": "user", "content": f"분석할 메시지:\n{self.user_text}"}
-#         ]
-#
-#         return messages
 
 class TemplateTitlePromptBuilder:
     """템플릿 제목 생성 프롬프트 빌더"""
