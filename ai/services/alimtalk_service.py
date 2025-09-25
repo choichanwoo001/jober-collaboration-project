@@ -52,6 +52,7 @@ class AlimtalkValidationService:
         if self.is_initialized:
             return
             
+<<<<<<< HEAD
         # ChromaDB 초기화 - 정책 문서 및 승인된 템플릿 데이터 로드
         await self.chromadb_service.initialize()
         
@@ -66,6 +67,28 @@ class AlimtalkValidationService:
         self.is_initialized = True
         print(">>service<<")
         print("✅ 알림톡 검증 서비스 초기화 완료")
+=======
+        try:
+            # ChromaDB 초기화 - 정책 문서 및 승인된 템플릿 데이터 로드
+            await self.chromadb_service.initialize()
+            
+            # 검증 파이프라인 초기화 - LLM 기반 제약 검증기와 의미적 검증기 연결
+            from validators.constraint_validator import ConstraintValidator
+            constraint_validator = ConstraintValidator()
+            self.validation_pipeline = ValidationPipeline(
+                chromadb_service=self.chromadb_service,
+                constraint_validator=constraint_validator
+            )
+            
+            self.is_initialized = True
+            print(">>service<<")
+            print(" 알림톡 검증 서비스 초기화 완료")
+            
+        except Exception as e:
+            print(">>service<<")
+            print(f" 알림톡 검증 서비스 초기화 실패: {e}")
+            raise
+>>>>>>> c1e1ee42278c5f8af972b279cbf33ee431ac001f
     
     async def validate_template(self, request: ValidationRequest) -> ValidationResponse:
         """템플릿 검증 실행"""
@@ -79,12 +102,12 @@ class AlimtalkValidationService:
             
             # 응답 생성
             if result['final_result'].is_valid:
-                final_message = "✅ 모든 검증을 통과했습니다. 발송 가능합니다."
+                final_message = " 모든 검증을 통과했습니다. 발송 가능합니다."
                 success = True
             else:
                 error_count = len(result['final_result'].errors)
                 warning_count = len(result['final_result'].warnings)
-                final_message = f"❌ 검증 실패: {error_count}개 오류, {warning_count}개 경고"
+                final_message = f" 검증 실패: {error_count}개 오류, {warning_count}개 경고"
                 success = False
             
             # 결과 필터링 (None이 아닌 것만, 중복 제거)
@@ -144,6 +167,7 @@ class AlimtalkValidationService:
                 total_errors=0,
                 total_warnings=0
             )
+<<<<<<< HEAD
     
     async def _extract_problem_info(self, error_source: Union[str, Dict[str, Any]], template_content: str) -> Dict[str, Any]:
         """AI를 사용해서 문제 영역을 자동으로 추출"""
@@ -495,4 +519,6 @@ class AlimtalkValidationService:
         return problem_areas
     
 
+=======
+>>>>>>> c1e1ee42278c5f8af972b279cbf33ee431ac001f
 
