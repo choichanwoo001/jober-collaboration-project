@@ -145,7 +145,6 @@ class AlimtalkValidationService:
                 total_warnings=0
             )
     
-    
     async def _extract_problem_info(self, error_source: Union[str, Dict[str, Any]], template_content: str) -> Dict[str, Any]:
         """AI를 사용해서 문제 영역을 자동으로 추출"""
         
@@ -278,7 +277,6 @@ class AlimtalkValidationService:
         else:
             return "error"  # 기본값
     
-    
     async def _generate_alternatives_batch(self, errors: List[str], stage: str, template_content: str = "") -> Dict[str, List[str]]:
         """여러 오류에 대한 대안을 한 번의 API 호출로 생성 (배치 처리)"""
         try:
@@ -301,7 +299,6 @@ class AlimtalkValidationService:
             print(f"배치 AI 대안 생성 중 오류 발생: {e}")
             # 실패 시 각 오류별로 기본 메시지 반환
             return {error: ["AI 대안 생성에 실패했습니다. 수동으로 수정해주세요."] for error in errors}
-    
     
     def _extract_alternatives_from_batch_response(self, response: str, errors: List[str]) -> Dict[str, List[str]]:
         """배치 AI 응답에서 오류별 대안 추출 (JSON 형식)"""
