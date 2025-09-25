@@ -164,7 +164,7 @@ public class TemplateService {
                 for (Map<String, Object> problemArea : problemAreasList) {
                     String reason = (String) problemArea.getOrDefault("reason", "알 수 없는 오류");
                     String errorType = (String) problemArea.getOrDefault("error_type", "unknown");
-                    String severity = (String) problemArea.getOrDefault("severity", "error");
+                    // String severity = (String) problemArea.getOrDefault("severity", "error");
                     Integer startPosition = (Integer) problemArea.get("start_position");
                     Integer endPosition = (Integer) problemArea.get("end_position");
                     
@@ -203,24 +203,23 @@ public class TemplateService {
     //     // UserDto에서 가져온 accountId로 기존 Account 엔티티 참조
     //     Account account = accountRepository.findById(currentUser.getAccountId())
     //             .orElseThrow(() -> new ResourceNotFoundException("사용자를 찾을 수 없습니다: " + currentUser.getAccountId()));
-
+    //
     //     Template template = Template.builder()
     //             .account(account)
     //             .templateContent(requestDto.getTemplateContent())
     //             .category(findCategoryByName(requestDto.getCategory()))
     //             .status("APPROVED")
     //             .build();
-
-        if (requestDto.getVariableList() != null && !requestDto.getVariableList().isEmpty()) {
-            for (String variableKey : requestDto.getVariableList()) {
-                Var variable = Var.builder()
-                        .variableKey(variableKey)
-                        .build();
-                template.addVariable(variable);
-            }
-        }
-
-
+    //
+    //     if (requestDto.getVariableList() != null && !requestDto.getVariableList().isEmpty()) {
+    //         for (String variableKey : requestDto.getVariableList()) {
+    //             Var variable = Var.builder()
+    //                     .variableKey(variableKey)
+    //                     .build();
+    //             template.addVariable(variable);
+    //         }
+    //     }
+    //
     //     Template savedTemplate = templateRepository.save(template);
     //     log.info("검증 성공, 템플릿 및 변수 저장 완료: {}", savedTemplate.getTemplateId());
     //     return TemplateValidationResponseDto.success(savedTemplate.getTemplateId().toString());
