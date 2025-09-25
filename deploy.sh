@@ -208,6 +208,26 @@ else
     log_info "SSL 설정 스크립트가 없거나 실행 권한이 없습니다. SSL을 사용하려면 chmod +x ./scripts/setup-ssl.sh 를 실행하세요."
 fi
 
+# SSL 설정
+log_info "SSL 인증서 설정 중..."
+
+# SSL 스크립트가 있고 실행 가능한 경우에만 실행
+if [ -f "./scripts/setup-ssl.sh" ] && [ -x "./scripts/setup-ssl.sh" ]; then
+    if ./scripts/setup-ssl.sh; then
+        log_success "SSL 인증서 설정 완료"
+        # HTTPS로 접근 가능한지 확인
+        if curl -f https://pls-jober.shop/health > /dev/null 2>&1; then
+            log_success "HTTPS 서비스가 정상적으로 실행 중입니다."
+        else
+            log_warning "HTTPS 접근이 아직 불가능합니다. HTTP로 접근하세요."
+        fi
+    else
+        log_warning "SSL 설정에 실패했습니다. HTTP로 서비스를 제공합니다."
+    fi
+else
+    log_info "SSL 설정 스크립트가 없거나 실행 권한이 없습니다. SSL을 사용하려면 chmod +x ./scripts/setup-ssl.sh 를 실행하세요."
+fi
+
 # 서비스 상태 확인
 log_info "서비스 상태 확인:"
 docker-compose ps
