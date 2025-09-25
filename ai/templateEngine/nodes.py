@@ -356,12 +356,8 @@ async def generate_with_reference_node(state: TemplateGenerationState) -> Dict[s
         messages = prompt_builder.build()
         template = await state["openai_service"].chat_completion(messages)
         
-        # 템플릿 정리 서비스 사용
-        from services.template_cleanup_service import TemplateCleanupService
-        cleaned_template = TemplateCleanupService.extract_clean_template_from_response(template)
-        
         logger.info("✅ 참고 템플릿 기반 생성 성공")
-        return {"generated_template": cleaned_template, "generation_hint": "reference_based"}
+        return {"generated_template": template, "generation_hint": "reference_based"}
     except Exception as e:
         logger.error(f"❌ 참고 템플릿 기반 생성 실패: {e}", exc_info=True)
         return {"generated_template": "템플릿 생성 중 오류 발생", "generation_hint": "error"}
@@ -384,12 +380,8 @@ async def search_public_and_generate_node(state: TemplateGenerationState) -> Dic
         messages = prompt_builder.build()
         template = await state["openai_service"].chat_completion(messages)
         
-        # 템플릿 정리 서비스 사용
-        from services.template_cleanup_service import TemplateCleanupService
-        cleaned_template = TemplateCleanupService.extract_clean_template_from_response(template)
-        
         logger.info(f"✅ 신규 생성 성공 (방식: {hint})")
-        return {"generated_template": cleaned_template, "generation_hint": hint, "pulblic_templates": pulblic_templates}
+        return {"generated_template": template, "generation_hint": hint, "pulblic_templates": pulblic_templates}
     except Exception as e:
         logger.error(f"❌ 신규 생성 실패: {e}", exc_info=True)
         return {"generated_template": "템플릿 생성 중 오류 발생", "generation_hint": "error", "pulblic_templates": []}
