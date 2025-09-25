@@ -37,7 +37,7 @@ interface KakaoPreviewProps {
   templateContent?: string
   templateTitle?: string
   showVariables: boolean
-  variables: Record<string, string>
+  variables: string[]
   isRejected: boolean
   rejectedVariables: string[]
   validationErrors?: any[]
@@ -48,7 +48,7 @@ const emit = defineEmits<{
   variableClick: [variableName: string]
   rejectTemplate: []
   submitTemplate: []
-  updateVariables: [variables: Record<string, string>]
+  updateVariables: [variables: string[]]
 }>()
 
 const editedVariables = ref({ ...props.variables })
@@ -71,7 +71,7 @@ const formattedTemplateContent = computed(() => {
 문의사항이 있으신 경우 고객센터로 연락 부탁드립니다.
 
 감사합니다.
-    `
+`
 
     // 내용 길이 체크 및 토글 설정 (줄 수 기준)
     const lines = defaultContent.split('\n').filter(line => line.trim())
@@ -82,11 +82,20 @@ const formattedTemplateContent = computed(() => {
 
   // 2) 텍스트 정리
   let content = props.templateContent ?? ''
+  
+  // 디버깅을 위한 로그
+  console.log('=== KakaoPreviewComponent 템플릿 처리 ===')
+  console.log('원본 템플릿:', content)
+  
+  // 더 정확한 텍스트 정리
   content = content
     .replace(/(변수\s*목록\s*:|변수\s*:).*$/s, '')      // 변수 목록 제거
     .replace(/알림톡\s*템플릿은.*$/s, '')               // 설명 문구 제거
     .replace(/\n\s*\n\s*\n/g, '\n\n')                   // 빈 줄 정리
     .trim()
+  
+  console.log('정리된 템플릿:', content)
+  console.log('================================')
 
   // 내용 길이 체크 (줄 수 기준)
   const lines = content.split('\n').filter(line => line.trim())
@@ -171,7 +180,7 @@ const toggleExpansion = () => {
 
 // props.variables가 변경될 때마다 editedVariables 업데이트
 watch(() => props.variables, (newVariables) => {
-  editedVariables.value = { ...newVariables }
+  editedVariables.value = [...newVariables]
 }, { deep: true })
 
 // 변수 클릭 이벤트 처리

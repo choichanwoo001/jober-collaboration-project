@@ -324,7 +324,7 @@ class TemplateGenerationPromptBuilder:
 {self.context}
 
 위 정보를 바탕으로 알림톡 템플릿을 생성해주세요. 
-템플릿에는 변수(예: #{{변수명}})를 포함하고, 
+템플릿에는 변수(예: #{{변수명}})를 포함하고,
 변수 목록도 함께 제공해주세요.
 
 템플릿 형식:
@@ -340,11 +340,20 @@ class TemplateModificationPromptBuilder:
         self.current_template = current_template
         self.user_message = user_message
         self.chat_context = chat_context
-
+    
     def build(self) -> str:
         """템플릿 수정 프롬프트 생성"""
         return f"""
-현재 알림톡 템플릿:
+당신은 카카오톡 알림톡 템플릿 수정 전문가입니다.
+
+## 작업 지침
+1. 이전 대화 내용을 참고하여 사용자의 의도를 정확히 파악합니다.
+2. 사용자 요청을 분석하여 템플릿을 적절히 수정합니다.
+3. 변수 형식 `#{{변수명}}`은 반드시 유지합니다.
+4. 템플릿의 기본 구조와 톤앤매너는 유지합니다.
+5. 수정이 필요하지 않으면 현재 템플릿을 그대로 반환합니다.
+
+## 현재 템플릿:
 {self.current_template}
 
 채팅 히스토리:
@@ -361,6 +370,7 @@ class TemplateModificationPromptBuilder:
 4. 설명, 해설, 변경사항 설명 등은 절대 포함하지 마세요
 5. "수정된 템플릿:", "설명:", "변경사항:" 등의 헤더도 사용하지 마세요
 
+## 수정된 템플릿:
 응답 형식:
 수정된 템플릿:
 [수정된 템플릿 내용만 여기에 작성]
@@ -375,7 +385,7 @@ class ReferenceBasedTemplatePromptBuilder:
     def __init__(self, request, reference_template):
         self.request = request
         self.reference_template = reference_template
-
+    
     def build(self) -> str:
         """참고 템플릿 기반 생성 프롬프트"""
         return f"""
@@ -419,7 +429,7 @@ class PolicyGuidedTemplatePromptBuilder:
     def __init__(self, request, guidelines_text):
         self.request = request
         self.guidelines_text = guidelines_text
-
+    
     def build(self) -> str:
         """정책 가이드라인 기반 생성 프롬프트"""
         return f"""
@@ -450,7 +460,7 @@ class PolicyGuidedTemplatePromptBuilder:
 class NewTemplatePromptBuilder:
     def __init__(self, request):
         self.request = request
-
+    
     def build(self) -> str:
         """새 템플릿 생성 프롬프트"""
         return f"""
@@ -486,7 +496,7 @@ class TemplateTitlePromptBuilder:
     def __init__(self, request, template_text):
         self.request = request
         self.template_text = template_text
-
+    
     def build(self) -> str:
         """템플릿 제목 생성 프롬프트"""
         return f"""
