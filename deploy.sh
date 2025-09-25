@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Nginx 컨테이너 헬스체크
 if curl -f http://localhost/health > /dev/null 2>&1; then
     log_success "Nginx 컨테이너가 정상적으로 실행 중입니다."
@@ -23,7 +25,7 @@ if [ -f "./scripts/setup-ssl.sh" ] && [ -x "./scripts/setup-ssl.sh" ]; then
     fi
 else
     log_info "SSL 설정 스크립트가 없거나 실행 권한이 없습니다. SSL을 사용하려면 chmod +x ./scripts/setup-ssl.sh 를 실행하세요."
-fi#!/bin/bash
+fi
 
 # ===================================================================
 #  통합 배포 스크립트
