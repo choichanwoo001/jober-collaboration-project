@@ -160,6 +160,7 @@ export const templateApi = {
     }
     
     console.log('검증 요청 데이터:', validationRequest)
+    console.log('요청 URL:', aiApi.defaults.baseURL + '/template/validate')
     
     return aiApi.post('/template/validate', validationRequest)
   },

@@ -71,12 +71,14 @@ const formattedTemplateContent = computed(() => {
     `
   }
 
-  // 2) 텍스트 정리
+  // 2) 텍스트 정리 및 마커 제거 (미리보기에서는 마커를 보이지 않음)
   let content = props.templateContent ?? ''
   content = content
     .replace(/(변수\s*목록\s*:|변수\s*:).*$/s, '')      // 변수 목록 제거
     .replace(/알림톡\s*템플릿은.*$/s, '')               // 설명 문구 제거
     .replace(/\n\s*\n\s*\n/g, '\n\n')                   // 빈 줄 정리
+    // 마커 제거 (⟦ID⟧내용⟦/ID⟧ → 내용)
+    .replace(/⟦([^⟦]+)⟧([^⟦]*)⟦\/\1⟧/g, '$2')
     .trim()
 
   // 3) 변수 하이라이트

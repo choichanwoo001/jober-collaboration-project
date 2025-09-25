@@ -4,7 +4,6 @@
       <button v-if="showingAlternatives" class="back-btn" @click="goBack">←</button>
       <h3>{{ showingAlternatives ? '수정이 필요한 내용' : '반려 사유 및 대안' }}</h3>
       <div v-if="validationStage" class="validation-stage">
-        <!-- <span class="stage-badge">{{ validationStage }}</span> -->
       </div>
       <button class="close-btn" @click="$emit('close')">×</button>
     </div>
@@ -53,7 +52,6 @@
 
     <!-- 문제 영역 목록 (기본 화면) -->
     <div class="problem-areas-summary" v-if="!showingAlternatives">
-      <!-- <h4>문제 영역 목록</h4> -->
       <div class="summary-stats">
         <span class="error-count">❌ 오류 {{ totalErrors }}개</span>
         <span class="warning-count">⚠️ 경고 {{ totalWarnings }}개</span>
@@ -147,20 +145,32 @@ watch(() => props.alternatives, (newAlternatives) => {
 
 // 대안 선택
 const selectAlternative = (alternative: Alternative) => {
+  console.log('대안 클릭됨:', alternative.text, '현재 선택 상태:', alternative.selected)
+  
   // 다른 대안들의 선택 해제
   currentAlternatives.value.forEach(alt => {
     if (alt !== alternative) {
       alt.selected = false
     }
   })
-  // 현재 대안 선택/해제
-  alternative.selected = !alternative.selected
+  // 현재 대안 선택 (토글하지 않고 항상 선택)
+  alternative.selected = true
+  
+  console.log('선택 후 상태:', currentAlternatives.value.map(alt => ({ text: alt.text, selected: alt.selected })))
 }
 
 // 선택한 대안 적용
 const applySelectedAlternative = () => {
+  console.log('=== 대안 적용 버튼 클릭 ===')
+  console.log('현재 대안들:', currentAlternatives.value)
+  console.log('선택된 오류:', selectedError.value)
+  console.log('hasSelectedAlternative 값:', hasSelectedAlternative.value)
+  
   const selectedAlternative = currentAlternatives.value.find(alt => alt.selected)
+  console.log('선택된 대안:', selectedAlternative)
+  
   if (selectedAlternative && selectedError.value) {
+    console.log('이벤트 emit 시작')
     // LLM 생성 대안인 경우 검증 규칙 준수 정보 추가
     const alternativeWithGuarantee = {
       ...selectedAlternative,
@@ -169,15 +179,21 @@ const applySelectedAlternative = () => {
       appliedAt: new Date().toISOString()
     }
     
+    console.log('emit할 데이터:', alternativeWithGuarantee, selectedError.value)
     emit('applyAlternative', alternativeWithGuarantee, selectedError.value)
+    console.log('이벤트 emit 완료')
     // 적용 후 메인 화면으로 돌아가기
     goBack()
+  } else {
+    console.log('선택된 대안이 없거나 오류 정보가 없음')
   }
 }
 
 // 선택된 대안이 있는지 확인
 const hasSelectedAlternative = computed(() => {
-  return currentAlternatives.value.some(alt => alt.selected)
+  const hasSelected = currentAlternatives.value.some(alt => alt.selected)
+  console.log('hasSelectedAlternative 계산:', hasSelected, '대안들:', currentAlternatives.value.map(alt => ({ text: alt.text, selected: alt.selected })))
+  return hasSelected
 })
 
 // 뒤로가기
@@ -239,7 +255,6 @@ const getSeverityClass = (severity: string) => {
   return severity === 'error' ? 'severity-error' : 'severity-warning'
 }
 
-// 사용되지 않는 헬퍼 함수들 제거
 </script>
 
 <style scoped>
@@ -273,15 +288,6 @@ const getSeverityClass = (severity: string) => {
   margin-right: 0.5rem;
 }
 
-.stage-badge {
-  background: #ff6b6b;
-  color: white;
-  padding: 0.2rem 0.6rem;
-  border-radius: 0.3rem;
-  font-size: 0.7rem;
-  font-weight: bold;
-  text-transform: uppercase;
-}
 
 .sidebar-header h3 {
   margin: 0;
@@ -324,7 +330,6 @@ const getSeverityClass = (severity: string) => {
   background: #f5f5f5;
 }
 
-/* 사용되지 않는 CSS 클래스들 제거 */
 
 .severity-error {
   color: #d32f2f;
@@ -342,7 +347,6 @@ const getSeverityClass = (severity: string) => {
   border-radius: 0.2rem;
 }
 
-/* 사용되지 않는 alternatives-section CSS 제거 */
 
 .alternatives-list {
   display: flex;
@@ -534,7 +538,6 @@ const getSeverityClass = (severity: string) => {
   font-weight: 600;
 }
 
-/* 사용되지 않는 error-header, rule-type-badge CSS 제거 */
 
 .severity-badge {
   font-size: 0.7rem;
@@ -572,7 +575,6 @@ const getSeverityClass = (severity: string) => {
   font-style: italic;
 }
 
-/* 사용되지 않는 error-content CSS 제거 */
 
 .error-reason {
   margin: 0 0 0.3rem 0;
@@ -588,7 +590,6 @@ const getSeverityClass = (severity: string) => {
   font-style: italic;
 }
 
-/* 사용되지 않는 rejected-item 관련 CSS 제거 */
 
 .click-hint {
   font-size: 0.8rem;
@@ -607,7 +608,6 @@ const getSeverityClass = (severity: string) => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-/* 사용되지 않는 clickable-error CSS 제거 */
 
 .alternatives-selection {
   margin-top: 0.8rem;
