@@ -79,7 +79,7 @@ app.include_router(ai_routes.router)
 try:
     from routers import alimtalk_routes
     logger.info("알림톡 라우터 모듈 로드 완료")
-    app.include_router(alimtalk_routes.router)
+    app.include_router(alimtalk_routes.router, prefix="/ai")
     print(">>main<<")
     print("[SUCCESS] 알림톡 검증 라우터 등록 완료")
     logger.info("알림톡 검증 라우터 등록 완료")

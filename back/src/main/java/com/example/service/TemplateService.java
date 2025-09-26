@@ -29,19 +29,12 @@ public class TemplateService {
     @Transactional
     public TemplateSaveResponseDto saveTemplate(TemplateSaveRequestDto requestDto, UserDto currentUser) {
         try {
-            // 요청 데이터 로깅
-            log.info("템플릿 저장 요청 데이터 - 제목: '{}', 사용자메시지: '{}', 카테고리: '{}'",
-                    requestDto.getTemplateTitle(), requestDto.getUserMessage(), requestDto.getCategory());
-
             // 사용자 계정 조회
             Account account = accountRepository.findById(currentUser.getAccountId())
                     .orElseThrow(() -> new ResourceNotFoundException("사용자를 찾을 수 없습니다."));
-            log.info("사용자 계정 조회 완료 - account: {}", account);
 
             // 카테고리 조회
-            log.info("카테고리 조회 시작 - categoryName: {}", requestDto.getCategory());
             Category category = findCategoryByName(requestDto.getCategory());
-            log.info("카테고리 조회 완료 - category: {}", category);
 
             // Template 생성
             Template template = Template.builder()
@@ -53,47 +46,32 @@ public class TemplateService {
                     .status("검증 중")
                     .build();
 
-                    if (requestDto.getVariableList() != null && !requestDto.getVariableList().isEmpty()) {
-                        // 유효한 변수만 필터링 (null이 아니고, 공백이 아닌 변수만)
-                        List<String> validVariables = requestDto.getVariableList().stream()
-                                .filter(variableName -> variableName != null && !variableName.trim().isEmpty())
-                                .toList();
-                        
-                    if (!validVariables.isEmpty()) {
-                        log.info("변수 목록 저장 시작 - 유효한 변수 개수: {}", validVariables.size());
-                        for (String variableName : validVariables) {
-                            log.info("변수 저장: {}", variableName);
-                            Var variable = Var.builder()
-                                .variableKey(variableName.trim()) // 앞뒤 공백 제거
-                                .build();
-                            template.addVariable(variable);
-                            }
-                        } else {
-                            log.warn("유효한 변수가 없습니다. 모든 변수가 null이거나 공백입니다.");
-                        }
-                    } else {
-                        log.warn("변수 목록이 비어있습니다. requestDto.getVariableList(): {}", requestDto.getVariableList());
+            if (requestDto.getVariableList() != null && !requestDto.getVariableList().isEmpty()) {
+                // 유효한 변수만 필터링 (null이 아니고, 공백이 아닌 변수만)
+                List<String> validVariables = requestDto.getVariableList().stream()
+                        .filter(variableName -> variableName != null && !variableName.trim().isEmpty())
+                        .toList();
+                
+                if (!validVariables.isEmpty()) {
+                    for (String variableName : validVariables) {
+                        Var variable = Var.builder()
+                            .variableKey(variableName.trim()) // 앞뒤 공백 제거
+                            .build();
+                        template.addVariable(variable);
                     }
+                }
+            }
 
             // DB 저장
             Template savedTemplate = templateRepository.save(template);
-            log.info("템플릿 저장 완료: {}", savedTemplate.getTemplateId());
-            log.info("저장된 템플릿 상세 - 제목: '{}', 사용자메시지: '{}', 내용: '{}'",
-                    savedTemplate.getAutoTitle(), savedTemplate.getUserMessage(),
-                    savedTemplate.getTemplateContent() != null ? savedTemplate.getTemplateContent().substring(0, Math.min(50, savedTemplate.getTemplateContent().length())) : "null");
-            log.info("저장된 변수 개수: {}", savedTemplate.getVariables().size());
             
             // 카테고리 사용량 증가
             incrementCategoryUsageCount(requestDto.getCategory());
             
-            log.info("=== TemplateService.saveTemplate 완료 ===");
 
             return TemplateSaveResponseDto.success(savedTemplate.getTemplateId().toString());
         } catch (Exception e) {
-            log.error("=== TemplateService.saveTemplate 오류 발생 ===");
-            log.error("오류 타입: {}", e.getClass().getSimpleName());
-            log.error("오류 메시지: {}", e.getMessage());
-            log.error("오류 스택 트레이스:", e);
+            log.error("템플릿 저장 중 오류 발생", e);
             return TemplateSaveResponseDto.failure("템플릿 저장 중 오류가 발생했습니다: "+e.getMessage());
         }
     }
@@ -106,7 +84,6 @@ public class TemplateService {
     @Transactional
     public TemplateValidationResponseDto validateTemplate(TemplateValidationRequestDto requestDto, UserDto currentUser) {
         try {
-            log.info("템플릿 검증 시작: {}", requestDto.getTemplateContent().substring(0, Math.min(50, requestDto.getTemplateContent().length())));
 
             // AI 서버로 검증 요청
             Map<String, Object> validationRequest = new HashMap<>();
@@ -117,27 +94,18 @@ public class TemplateService {
             validationRequest.put("templateTitle", requestDto.getTemplateTitle());
             if (requestDto.getTemplateId() != null) {
                 validationRequest.put("templateId", requestDto.getTemplateId());
-                log.info("AI 서버로 전달할 검증 요청에 templateId 포함: {}", requestDto.getTemplateId());
-            } else {
-                log.warn("검증 요청에 templateId가 없습니다");
             }
-
-            log.info("AI 서버 검증 요청 데이터: {}", validationRequest);
 
             // AI 서버 검증 호출 (실제로는 AIService를 통해 호출)
             Map<String, Object> aiValidationResult = aiService.validateTemplateWithFastAPI(validationRequest);
 
-            boolean isValid = isValidationSuccessful(aiValidationResult);
-            log.info("AI 검증 결과 - 성공 여부: {}", isValid);
-
             // 검증 성공 시에도 저장하지 않음 - 수정에서만 저장
+            // boolean isValid = isValidationSuccessful(aiValidationResult);
             // if (isValid) {
             //     return handleApproval(requestDto, currentUser);
             // }
 
             RejectionDetails rejectionDetails = extractRejectionDetails(aiValidationResult);
-            log.info("검증 실패, 반려된 변수: {}, 오류 정보: {}, 검증 단계: {}",
-                    rejectionDetails.rejectedVariables, rejectionDetails.validationErrors, rejectionDetails.validationStage);
 
             TemplateValidationResponseDto response = TemplateValidationResponseDto.rejectionWithDetails(
                     rejectionDetails.rejectedVariables,
@@ -152,6 +120,30 @@ public class TemplateService {
                 @SuppressWarnings("unchecked")
                 List<Object> validationResultsList = (List<Object>) validationResults;
                 response.setValidation_results(validationResultsList);
+            }
+            
+            // problem_areas 정보를 validationErrors에 추가
+            Object problemAreas = aiValidationResult.get("problem_areas");
+            if (problemAreas instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> problemAreasList = (List<Map<String, Object>>) problemAreas;
+                List<TemplateValidationResponseDto.ValidationError> validationErrors = new ArrayList<>();
+                
+                for (Map<String, Object> problemArea : problemAreasList) {
+                    String reason = (String) problemArea.getOrDefault("reason", "알 수 없는 오류");
+                    String errorType = (String) problemArea.getOrDefault("error_type", "unknown");
+                    // String severity = (String) problemArea.getOrDefault("severity", "error");
+                    Integer startPosition = (Integer) problemArea.get("start_position");
+                    Integer endPosition = (Integer) problemArea.get("end_position");
+                    
+                    TemplateValidationResponseDto.ValidationError validationError = 
+                        new TemplateValidationResponseDto.ValidationError(
+                            reason, reason, errorType, rejectionDetails.validationStage, startPosition, endPosition
+                        );
+                    validationErrors.add(validationError);
+                }
+                
+                response.setValidationErrors(validationErrors);
             }
             
             return response;
@@ -179,24 +171,23 @@ public class TemplateService {
     //     // UserDto에서 가져온 accountId로 기존 Account 엔티티 참조
     //     Account account = accountRepository.findById(currentUser.getAccountId())
     //             .orElseThrow(() -> new ResourceNotFoundException("사용자를 찾을 수 없습니다: " + currentUser.getAccountId()));
-
+    //
     //     Template template = Template.builder()
     //             .account(account)
     //             .templateContent(requestDto.getTemplateContent())
     //             .category(findCategoryByName(requestDto.getCategory()))
     //             .status("APPROVED")
     //             .build();
-
+    //
     //     if (requestDto.getVariableList() != null && !requestDto.getVariableList().isEmpty()) {
-    //         for (TemplateValidationRequestDto.VariableDto variableDto : requestDto.getVariableList()) {
+    //         for (String variableKey : requestDto.getVariableList()) {
     //             Var variable = Var.builder()
-    //                     .variableKey(variableDto.getVariableKey())
-    //                     .variableValue(variableDto.getVariableValue())
+    //                     .variableKey(variableKey)
     //                     .build();
     //             template.addVariable(variable);
     //         }
     //     }
-
+    //
     //     Template savedTemplate = templateRepository.save(template);
     //     log.info("검증 성공, 템플릿 및 변수 저장 완료: {}", savedTemplate.getTemplateId());
     //     return TemplateValidationResponseDto.success(savedTemplate.getTemplateId().toString());

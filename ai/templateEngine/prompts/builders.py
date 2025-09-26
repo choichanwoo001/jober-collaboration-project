@@ -323,39 +323,6 @@ class TypePromptBuilder(BasePromptBuilder):
             }
         ]
         return prompt
-# @TODO: TypePromptBuilder langGraph 동작 확인 시, 주석 버전 삭제하기
-# class TypePromptBuilder(BasePromptBuilder):
-#     """메시지 유형 분류 프롬프트 빌더"""
-#     def build(self) -> List[Dict]:
-#         system_prompt = """
-# 당신은 카카오 알림톡 메시지 유형 분류 전문가입니다.
-# 메시지를 다음 4가지 유형으로 분류해주세요:
-#
-# 1. BASIC: 기본 정보만 포함 (이름, 일시, 금액 등)
-# 2. EXTRA_INFO: 기본 정보 + 부가 설명이나 안내사항
-# 3. CHANNEL_ADD: 기본 정보 + 채널 추가/링크 유도
-# 4. HYBRID: 기본 정보 + 부가 설명 + 채널 링크
-#
-# 분석 요소:
-# - has_channel_link: 채널톡, 카카오톡 채널, 웹사이트 링크 포함 여부
-# - has_extra_info: 추가 안내사항, 주의사항, 부가 설명 포함 여부
-#
-# JSON 형식으로 응답하세요:
-# {
-#     "type": "분류 결과",
-#     "has_channel_link": true/false,
-#     "has_extra_info": true/false,
-#     "explain_type": "분류 이유 설명"
-# }
-# """
-#
-#         messages = [
-#             {"role": "system", "content": system_prompt},
-#             *self._build_hint_messages(),
-#             {"role": "user", "content": f"분석할 메시지:\n{self.user_text}"}
-#         ]
-#
-#         return messages
 
 class TemplateTitlePromptBuilder:
     """템플릿 제목 생성 프롬프트 빌더"""
@@ -415,7 +382,8 @@ class ReferenceBasedTemplatePromptBuilder:
         variable_rules = ""
         if self.extracted_fields:
             variable_rules = "\n\n**중요 변수 처리 규칙:**\n"
-            variable_rules += "다음 텍스트는 반드시 지정된 변수명으로 대체하여 `#{변수명}` 형태로 표현해야 합니다.\n"
+            variable_rules += "다음 텍스트는 반드시 지정된 변수명으로 대체하여 `#{{변수명}}` 형태로 표현해야 합니다.\n"
+            variable_rules += "**모든 변수는 반드시 #{{변수명}} 형태로만 작성해야 합니다. {{변수명}} 형태는 사용하지 마세요.**\n"
             for value, var_name in self.extracted_fields.items():
                 variable_rules += f"- '{value}'는 -> `#{{{var_name}}}'\n`으로 변경하세요.\n"
 
@@ -437,8 +405,9 @@ class ReferenceBasedTemplatePromptBuilder:
             - 예를 들어, 참고 템플릿에 `#{{order_no}}`가 있다면, 새로운 템플릿에서도 주문번호는 비슷한 위치에 `#{{order_id}}`와 같이 배치하는 것이 좋습니다.
             
             생성 규칙:
-            1. 변수는 #{{변수명}} 형태로 표현, 변수 처리 규칙을 100% 준수해야 합니다.
-            2. 참고 템플릿의 구조 모방 : 참고 템플릿의 인사말, 본문, 항목 구분(예: '▶'), 마무리, 발송 근거 등의 구조를 적극적으로 따라야 합니다.
+<<<<<<< HEAD
+            1. 변수는 반드시 #{{변수명}} 형태로만 표현, 변수 처리 규칙을 100% 준수해야 합니다. {{변수명}} 형태는 절대 사용하지 마세요.
+            2. 참고 템플릿의 구조 모방 : 참고 템플릿의 인사말, 본문, 항목 구분(예: '■'), 마무리, 발송 근거 등의 구조를 적극적으로 따라야 합니다.
             3. 톤앤매너 유지
             3. 광고성 내용 금지, 정보성/안내성 내용만
             4. 발송 근거를 하단에 명시 (*로 시작)
@@ -470,11 +439,17 @@ class NewTemplatePromptBuilder:
         # 👇 변수 처리 규칙을 명시적으로 추가
         variable_rules = ""
         if self.extracted_fields:
-            variable_rules = "\n\n**중요 변수 처리 규칙:**\n"
-            variable_rules += "아래 규칙에 따라, 원본 메시지의 특정 단어를 `#{변수명}` 형태로 반드시 교체해야 합니다.\n"
+            variable_rules = "\n\n**🔥 중요 변수 처리 규칙 (반드시 준수):**\n"
+            variable_rules += "아래 규칙에 따라, 원본 메시지의 특정 단어를 `#{{변수명}}` 형태로 반드시 교체해야 합니다.\n"
+            variable_rules += "**모든 변수는 반드시 #{{변수명}} 형태로만 작성해야 합니다. {{변수명}} 형태는 절대 사용하지 마세요.**\n"
+            variable_rules += "**변수 처리 규칙을 위반하면 템플릿이 거부됩니다.**\n\n"
             # extracted_fields가 { "변수값": "변수명" } 형태라고 가정
             for value, var_name in self.extracted_fields.items():
-                variable_rules += f"- '{value}'는 `#{{{var_name}}}`으로 변경하세요.\n"
+                variable_rules += f"- '{value}' → `#{{{var_name}}}` (반드시 이 형태로 변경)\n"
+            variable_rules += "\n**변수 처리 예시:**\n"
+            variable_rules += "- '오일릴리' → `#{{brand_name}}`\n"
+            variable_rules += "- '이월행사' → `#{{theme}}`\n"
+            variable_rules += "- '40%~60%' → `#{{discount_rate}}`\n"
 
         system_prompt = f"""
             **[당신의 역할]**
@@ -487,24 +462,27 @@ class NewTemplatePromptBuilder:
             **[필수 규칙 2: 템플릿 구조]**
             1.  **인사:** "안녕하세요, 고객님." 과 같이 부드러운 문장으로 시작합니다.
             2.  **핵심 내용:** 전달하려는 가장 중요한 내용을 먼저 제시합니다.
-            3.  **상세 정보 (선택 사항):** 필요시, '▶' 기호를 사용하여 정보를 항목별로 명확하게 구분합니다.
+            3.  **상세 정보 (선택 사항):** 필요시, '•' 기호를 사용하여 정보를 항목별로 명확하게 구분합니다.
             4.  **마무리:** "감사합니다." 또는 "많은 이용 부탁드립니다." 와 같은 긍정적인 문장으로 끝맺습니다.
             5.  **발송 근거:** 템플릿 가장 마지막 줄에는 `*`로 시작하는 발송 근거를 반드시 포함해야 합니다. (예: `*본 알림은 정보통신망법에 따라 발송되었습니다.`)
+            6.  **변수 형태:** 모든 변수는 반드시 `#{{변수명}}` 형태로만 작성해야 합니다. `{{변수명}}` 형태는 절대 사용하지 마세요.
 
             **[좋은 템플릿의 조건]**
             1.  **친절함:** 딱딱하지 않고 부드러운 문장으로 시작하고 끝냅니다.
             2.  **명확성:** 핵심 정보를 쉽게 파악할 수 있도록 줄 바꿈과 구성을 활용합니다.
             3.  **정확성:** 변수 규칙을 포함한 모든 규칙을 100% 준수합니다.
+            4.  **완성도:** 의미없는 텍스트나 중간에 끊어진 문장이 없어야 합니다.
+            5.  **일관성:** 모든 불릿 포인트는 '•' 기호를 사용해야 합니다.
             
             **[생성 예시]**
             - 사용자 요청: "김철수님, 주문하신 상품(스마트폰)이 정상적으로 접수되었습니다. 주문번호는 ORD-2024-001이며, 결제금액은 850,000원입니다."
             - 변수 규칙: '김철수' -> `customer_name`, 'ORD-2024-001' -> `order_id`, '850,000' -> `amount`
-            - 좋은 템플릿 결과:
+            - 좋은 템플릿 결과 (모든 변수는 #{{변수명}} 형태):
             안녕하세요, #{{customer_name}}님.
             주문하신 상품이 정상적으로 접수되었습니다.
             
-            ■ 주문번호: #{{order_id}}
-            ■ 결제금액: #{{amount}}원
+            • 주문번호: #{{order_id}}
+            • 결제금액: #{{amount}}원
             
             상품 준비 후 배송이 시작되면 다시 한번 안내해 드리겠습니다.
             저희 서비스를 이용해 주셔서 감사합니다.
@@ -515,6 +493,12 @@ class NewTemplatePromptBuilder:
             위 예시와 모든 규칙을 참고하여, 주어진 요청에 맞는 최고의 템플릿을 생성해주세요.
             
             {public_context}
+            
+            **⚠️ 중요 주의사항:**
+            - 템플릿은 반드시 완성된 형태로 생성하세요
+            - 의미없는 텍스트나 중간에 끊어진 문장이 없어야 합니다
+            - 모든 문장은 완전하고 의미가 있어야 합니다
+            - "다양한 삿포득을 학이되" 같은 의미없는 텍스트는 절대 생성하지 마세요
             
             템플릿 본문만 출력하세요:
             """

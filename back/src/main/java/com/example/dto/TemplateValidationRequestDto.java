@@ -19,12 +19,5 @@ public class TemplateValidationRequestDto {
     
     // 변수 정보를 저장하기 위한 필드
     @NotNull(message = "변수 정보는 필수입니다.")
-    private List<VariableDto> variableList;
-    
-    @Getter
-    @Setter
-    public static class VariableDto {
-        private String variableKey;
-        private String variableValue;
-    }
+    private List<String> variableList;
 }
