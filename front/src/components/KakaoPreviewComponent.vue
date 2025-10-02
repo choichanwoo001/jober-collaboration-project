@@ -8,19 +8,14 @@
             <span class="kakao-header-text">알림톡 도착</span>
           </div>
           <div class="bubble-body">
+            <!-- 생성된 제목 표시 -->
+            <div v-if="props.templateTitle" class="message-title">
+              {{ props.templateTitle }}
+            </div>
             <div
               class="message-text"
-              :class="{ 'expanded': isExpanded }"
               v-html="formattedTemplateContent"
             ></div>
-          </div>
-          <div
-            v-if="shouldShowToggle"
-            class="toggle-button"
-            @click="toggleExpansion"
-          >
-            <span class="toggle-icon" :class="{ expanded: isExpanded }">▶</span>
-            <span class="toggle-text">{{ isExpanded ? '접기' : '자세히 보기' }}</span>
           </div>
         </div>
       </div>
@@ -84,89 +79,49 @@ const formattedTemplateContent = computed(() => {
 감사합니다.
 `
 
-    // 내용 길이 체크 및 토글 설정 (줄 수 기준)
-    const lines = defaultContent.split('\n').filter(line => line.trim())
-    shouldShowToggle.value = lines.length > 6
-
     return formatTemplateContent(defaultContent.trim())
   }
 
-  // 2) 텍스트 정리 및 마커 제거 (미리보기에서는 마커를 보이지 않음)
+  // 2) 최소한의 텍스트 정리만 수행 (원본 내용 보존)
   let content = props.templateContent ?? ''
   
+  console.log('=== KakaoPreviewComponent 디버깅 ===')
+  console.log('원본 templateContent:', content)
+  console.log('templateContent 길이:', content.length)
   
-  // 더 정확한 텍스트 정리
+  // 필수적인 정리만 수행
   content = content
-    .replace(/(변수\s*목록\s*:|변수\s*:).*$/s, '')      // 변수 목록 제거
-    .replace(/알림톡\s*템플릿은.*$/s, '')               // 설명 문구 제거
-    .replace(/\n\s*\n\s*\n/g, '\n\n')                   // 빈 줄 정리
-    // 마커 제거 (⟦ID⟧내용⟦/ID⟧ → 내용)
-    .replace(/⟦([^⟦]+)⟧([^⟦]*)⟦\/\1⟧/g, '$2')
-    // 고객에게 보이면 안 되는 내부 메시지 제거
-    .replace(/할인율[:\s]*~[^.]*\./g, '')              // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*고객이[^.]*\./g, '')         // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*고객들에게[^.]*\./g, '')     // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*보이면[^.]*\./g, '')         // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*안되는[^.]*\./g, '')         // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*메시지가[^.]*\./g, '')       // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*구체적인[^.]*\./g, '')       // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*언급하지[^.]*\./g, '')       // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*강조하되[^.]*\./g, '')       // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*참여할[^.]*\./g, '')         // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*방법이나[^.]*\./g, '')       // 할인율 관련 내부 메시지
-    .replace(/할인율[:\s]*혜택을[^.]*\./g, '')         // 할인율 관련 내부 메시지
-    .replace(/고객이[^.]*\./g, '')                     // 기타 내부 지시사항
-    .replace(/고객들에게[^.]*\./g, '')                 // 기타 내부 지시사항
-    .replace(/보이면[^.]*\./g, '')                     // 기타 내부 지시사항
-    .replace(/안되는[^.]*\./g, '')                     // 기타 내부 지시사항
-    .replace(/메시지가[^.]*\./g, '')                   // 기타 내부 지시사항
-    .replace(/구체적인[^.]*\./g, '')                   // 기타 내부 지시사항
-    .replace(/언급하지[^.]*\./g, '')                   // 기타 내부 지시사항
-    .replace(/강조하되[^.]*\./g, '')                   // 기타 내부 지시사항
-    .replace(/참여할[^.]*\./g, '')                     // 기타 내부 지시사항
-    .replace(/방법이나[^.]*\./g, '')                   // 기타 내부 지시사항
-    .replace(/혜택을[^.]*\./g, '')                     // 기타 내부 지시사항
-    .replace(/이\s*내용이[^.]*\./g, '')                // 기술적 설명
-    .replace(/이\s*부분이[^.]*\./g, '')                // 기술적 설명
-    .replace(/이\s*텍스트가[^.]*\./g, '')              // 기술적 설명
-    .replace(/이\s*문장이[^.]*\./g, '')                // 기술적 설명
-    .replace(/미리보기에[^.]*\./g, '')                 // 기술적 설명
-    .replace(/사용자가\s*보는건[^.]*\./g, '')          // 기술적 설명
-    .replace(/사용자에게\s*보이는[^.]*\./g, '')        // 기술적 설명
-    .replace(/화면에\s*표시되는[^.]*\./g, '')          // 기술적 설명
-    .replace(/잘하자\s*/g, '')                         // 작업 지시사항
-    .replace(/주의하자\s*/g, '')                       // 작업 지시사항
-    .replace(/기억하자\s*/g, '')                       // 작업 지시사항
-    .replace(/명심하자\s*/g, '')                       // 작업 지시사항
-    .replace(/주의\s*/g, '')                           // 작업 지시사항
-    .replace(/기억\s*/g, '')                           // 작업 지시사항
-    .replace(/명심\s*/g, '')                           // 작업 지시사항
-    .replace(/\s+/g, ' ')                              // 연속된 공백 정리
-    .replace(/\n\s*\n/g, '\n')                         // 연속된 줄바꿈 정리
+    .replace(/\n\s*\n\s*\n/g, '\n\n')                   // 연속된 빈 줄을 2개로 제한
+    .replace(/⟦([^⟦]+)⟧([^⟦]*)⟦\/\1⟧/g, '$2')         // 마커 제거만 (⟦ID⟧내용⟦/ID⟧ → 내용)
     .trim()
   
+  console.log('정리된 content:', content)
+  console.log('정리된 content 길이:', content.length)
+  
 
-  // 내용 길이 체크 (줄 수 기준)
-  const lines = content.split('\n').filter(line => line.trim())
-  shouldShowToggle.value = lines.length > 6
 
-  // 3) 변수를 항상 회색으로 처리
-  const varPatterns = [
-    /\{\{([^}]+)\}\}/g,  // {{변수}}
-    /#\{([^}]+)\}/g,      // #{변수}
-    /\{([^}]+)\}/g,       // {변수}
-    /\[([^\]]+)\]/g       // [변수] - 대괄호 형태도 변수로 처리
-  ]
+  // 3) 변수 하이라이팅 처리 (showVariables prop에 따라)
+  if (props.showVariables) {
+    const varPatterns = [
+      /\{\{([^}]+)\}\}/g,  // {{변수}}
+      /#\{([^}]+)\}/g,      // #{변수}
+      /\{([^}]+)\}/g,       // {변수}
+      /\[([^\]]+)\]/g       // [변수] - 대괄호 형태도 변수로 처리
+    ]
 
-  varPatterns.forEach(pattern => {
-    content = content.replace(pattern, (match, varName) => {
-      const variableName = varName.trim()
-      return `<span class="variable-gray" data-variable="${variableName}">#{${variableName}}</span>`
+    varPatterns.forEach(pattern => {
+      content = content.replace(pattern, (match, varName) => {
+        const variableName = varName.trim()
+        return `<span class="variable-highlight" data-variable="${variableName}">#{${variableName}}</span>`
+      })
     })
-  })
+  }
 
   // 4) 스마트 포맷팅 - 의미 있는 구조로 변환
+  console.log('포맷팅 전 content:', content)
   content = formatTemplateContent(content)
+  console.log('포맷팅 후 content:', content)
+
 
 
   // 특정 문제 영역 하이라이트
@@ -239,6 +194,9 @@ const highlightModifiedAreas = (content: string, modifiedAreaIds: string[]): str
 
 // 템플릿 내용 포맷팅 함수
 const formatTemplateContent = (content: string): string => {
+  console.log('formatTemplateContent 입력:', content)
+  
+
   // 화살표를 제대로된 포인트로 변환
   content = content.replace(/▶\s*/g, '▶ ')
   content = content.replace(/→\s*/g, '▶ ')
@@ -269,13 +227,11 @@ const formatTemplateContent = (content: string): string => {
     }
   }
 
-  return formattedLines.join('')
+  const result = formattedLines.join('')
+  console.log('formatTemplateContent 출력:', result)
+  return result
 }
 
-// 토글 기능
-const toggleExpansion = () => {
-  isExpanded.value = !isExpanded.value
-}
 
 // props.variables가 변경될 때마다 editedVariables 업데이트
 watch(() => props.variables, (newVariables) => {
@@ -297,7 +253,8 @@ watch(() => props.variables, (newVariables) => {
   border-radius: 0.8rem;
   overflow: hidden;
   box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.15);
-  width: 400px;
+  width: 320px; /* 16글자 너비 (한글 1글자 = 20px, 공백 반칸 고려) */
+
   flex-shrink: 0;
   align-self: center;
   max-height: none;
@@ -343,55 +300,19 @@ watch(() => props.variables, (newVariables) => {
   background-color: white;
 }
 
+.message-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #333;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
 .message-text {
   font-size: 0.9rem;
   line-height: 1.6;
   color: #333;
-  transition: max-height 0.3s ease;
-}
-
-.message-text:not(.expanded) {
-  max-height: 8rem;
-  overflow: hidden;
-  position: relative;
-}
-
-.message-text.expanded {
-  max-height: none;
-  overflow: visible;
-}
-
-.toggle-button {
-  background-color: #f7f7f7;
-  padding: 0.7rem 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  border-top: 1px solid #e0e0e0;
-  transition: background-color 0.2s ease;
-}
-
-.toggle-button:hover {
-  background-color: #eeeeee;
-}
-
-.toggle-icon {
-  color: #888;
-  font-size: 0.7rem;
-  transition: transform 0.2s ease;
-  transform: rotate(0deg);
-}
-
-.toggle-icon.expanded {
-  transform: rotate(90deg);
-}
-
-.toggle-text {
-  color: #666;
-  font-size: 0.85rem;
-  font-weight: 500;
 }
 
 /* 메시지 라인 스타일 */
@@ -418,6 +339,18 @@ watch(() => props.variables, (newVariables) => {
   background-color: transparent;
   font-weight: normal;
   display: inline;
+}
+
+/* 노란색 변수 하이라이트 스타일 */
+:deep(.variable-highlight) {
+  background-color: #FFE066;
+  color: #333333;
+  border: 1px solid #FFD700;
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-weight: 500;
+  display: inline;
+  transition: all 0.2s ease;
 }
 
 :deep(.disclaimer) {
@@ -453,6 +386,13 @@ watch(() => props.variables, (newVariables) => {
 :deep(.variable-gray:hover) {
   background-color: #e5e7eb;
   border-color: #9ca3af;
+}
+
+:deep(.variable-highlight:hover) {
+  background-color: #FFD700;
+  border-color: #FFA500;
+  transform: scale(1.02);
+
 }
 
 

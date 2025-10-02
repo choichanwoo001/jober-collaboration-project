@@ -4,6 +4,7 @@ from typing import Dict, Any, List
 
 from services.chromadb_service import ChromaDBService
 from models.alimtalk_models import ValidationResult
+
 from .config import (
     REJECT_THRESHOLD, REVIEW_THRESHOLD, VIOLATION_THRESHOLD,
     REJECTION_REASONS_SEARCH_K, EVIDENCE_LIMIT, VIOLATION_DISPLAY_LIMIT, TEXT_PREVIEW_LENGTH,
@@ -14,13 +15,26 @@ logger = logging.getLogger(__name__)
 
 
 class SemanticValidator:
-    """의미적 검증기 (RAG + 룰 기반) - 의존성 주입 방식 적용"""
+    """의미적 검증기 (RAG 기반) - 의존성 주입 방식 적용"""
+    
+    # 하이퍼 파라미터 상수
+    REJECT_THRESHOLD = 0.6      # 거부 임계값 (60% 이상)
+    REVIEW_THRESHOLD = 0.4      # 검토 임계값 (40% 이상)
+    VIOLATION_THRESHOLD = 0.4   # 위반 수집 임계값
+    
+    APPROVED_SEARCH_K = 6       # 승인 템플릿 검색 개수
+    PUBLIC_SEARCH_K = 5         # 공용 템플릿 검색 개수
+    EVIDENCE_LIMIT = 3          # evidence 수집 개수
+    VIOLATION_DISPLAY_LIMIT = 3 # 위반 사항 표시 개수
+    TEXT_PREVIEW_LENGTH = 100   # 텍스트 미리보기 길이
+
 
     def __init__(self, chromadb_service: ChromaDBService):
         """
         ChromaDBService를 외부에서 주입받아 초기화합니다.
         """
         self.chromadb_service = chromadb_service
+        self.DENIED_REASONS_SEARCH_K = 5  # denied_reasons 검색 시 상위 k개 결과
 
     def validate(self, template: Dict[str, Any]) -> ValidationResult:
         """
@@ -30,29 +44,34 @@ class SemanticValidator:
         print("🔍 SemanticValidator.validate() 시작")
         text = f"{template.get('template_title','')} {template.get('template_content','')}".strip()
         category = template.get("category")
+        
         print(f"검증 대상 텍스트: {text[:TEXT_PREVIEW_LENGTH]}...")
         print(f"카테고리: {category}")
 
-        # 1) 두 컬렉션 RAG (병렬 개념, 구현은 순차 호출)
+        # 1) 두 컬렉션 RAG (rejection_reasons + denied_reasons)
+
         print("🔍 rejection_reasons 컬렉션 검색 시작...")
         s_rr = self._rag_stage("rejection_reasons", text, k=REJECTION_REASONS_SEARCH_K, category_sub=category)
         # evidence 중복 제거
         s_rr["evidence"] = self._deduplicate_violations(s_rr.get("evidence", []))
         print(f"rejection_reasons 결과: {s_rr}")
 
-        print("🔍 blacklist 룰 기반 검증 시작...")
-        s_dn = self._rule_based_blacklist_stage(text)
-        print(f"blacklist 결과: {s_dn}")
+        print("🔍 denied_reasons 컬렉션 검색 시작...")
+        s_dn = self._rag_stage("denied_reasons", text, k=self.DENIED_REASONS_SEARCH_K)
+        print(f"denied_reasons 결과: {s_dn}")
 
-        # 룰 기반 검증에서는 카테고리 필터가 없으므로 로그 제거
+        # 만약 결과가 없다면 카테고리 필터 때문일 수 있으니 로그 출력
+        if s_dn.get('score', 0) == 0:
+            print(f"⚠️ denied_reasons에서 결과 없음. 카테고리: {category}")
 
         # 2) 최종 취합 - 실제 RAG 결과를 기반으로 계산
         # 두 단계 결과를 종합하여 최종 판정
         rejection_reasons_score = s_rr.get('score', 0.0)
-        blacklist_score = s_dn.get('score', 0.0)
+        denied_reasons_score = s_dn.get('score', 0.0)
         
         # 더 높은 위험도를 최종 위험도로 사용
-        final_risk = max(rejection_reasons_score, blacklist_score)
+        final_risk = max(rejection_reasons_score, denied_reasons_score)
+
         
         # 위험도 기반 최종 라벨 결정
         if final_risk >= REJECT_THRESHOLD:
@@ -76,6 +95,7 @@ class SemanticValidator:
         
         if s_dn.get('label') in ['fail', 'review']:
             for evidence in s_dn.get('evidence', []):
+
                 if evidence.get('score', 0) >= VIOLATION_THRESHOLD:
                     violations.append({
                         "source": "blacklist",
@@ -83,9 +103,9 @@ class SemanticValidator:
                         "evidence": evidence.get('evidence', ''),
                         "score": evidence.get('score', 0)
                     })
+
         # violations 중복 제거
         violations = self._deduplicate_violations(violations)
-
         decision_source = "heuristic"
         needs_review: bool = False
         warnings: List[str] = []
@@ -108,6 +128,7 @@ class SemanticValidator:
         print(f"   👥 사람 검토 필요: {'예' if needs_review else '아니오'}")
         if violations:
             print(f"   🚫 위반 사항 상세:")
+
             for i, v in enumerate(violations[:VIOLATION_DISPLAY_LIMIT], 1):  # 최대 3개만 표시
                 print(f"      {i}. {v.get('reason', '알 수 없는 사유')} (출처: {v.get('source', '알 수 없음')})")
 
@@ -140,6 +161,7 @@ class SemanticValidator:
             else:
                 seen[key] = v
         return list(seen.values())
+
 
     def _rule_based_blacklist_stage(self, text: str) -> Dict[str, Any]:
         """
@@ -304,6 +326,25 @@ class SemanticValidator:
                 category_sub=category_sub,
                 top_k=k
             )
+        elif collection == "approved_templates":
+            if not category_sub:
+                logger.warning("approved_templates 검색 시 category_sub가 필요합니다.")
+                hits = []
+            else:
+                hits = self.chromadb_service.search_templates(
+                    collection_name="approved_templates",
+                    query_text=text,
+                    category_sub=category_sub,
+                    top_k=k
+                )
+        elif collection == "public_templates":
+            hits = self.chromadb_service.search_templates(
+                collection_name="public_templates",
+                query_text=text,
+                top_k=k,
+                result_format="legacy"
+            )
+
         else:
             logger.warning(f"알 수 없는 컬렉션 이름입니다: {collection}")
             hits = []

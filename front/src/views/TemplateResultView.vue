@@ -10,55 +10,58 @@
         <div class="split-layout">
           <!-- 왼쪽: 메시지 편집/정보 (1/3) -->
           <div class="left-panel">
-            <!-- 채팅 이력 표시 영역 -->
-            <div class="chat-history-container">
-              <div class="chat-history" ref="chatHistoryRef">
-                <template v-for="(message, index) in chatHistory" :key="index">
-                  <div :class="['chat-message', message.type]">
-                    <div class="message-content">{{ message.content }}</div>
-                    <div class="message-time">{{ message.time }}</div>
-                  </div>
-                  
-                  <!-- 해당 메시지 다음에 버전 버튼 표시 -->
-                  <div 
-                    v-for="version in versions.filter((v: any) => v.messageIndex === index)" 
-                    :key="`version-${version.number}`"
-                    class="version-creation-point"
-                  >
-                    <div class="version-divider">
-                      <span class="version-label">버전 {{ version.number }} 생성</span>
+            <!-- 통합된 채팅 컨테이너 -->
+            <div class="unified-chat-container">
+              <!-- 채팅 이력 표시 영역 -->
+              <div class="chat-history-container">
+                <div class="chat-history" ref="chatHistoryRef">
+                  <template v-for="(message, index) in chatHistory" :key="index">
+                    <div :class="['chat-message', message.type]">
+                      <div class="message-content">{{ message.content }}</div>
+                      <div class="message-time">{{ message.time }}</div>
                     </div>
-                    <div class="version-buttons">
-                      <button 
-                        :class="['btn-version', { 'active': currentVersion === version.number }]"
-                        @click="selectVersion(version.number)"
-                      >
-                        버전 {{ version.number }}
-                      </button>
+                    
+                    <!-- 해당 메시지 다음에 버전 버튼 표시 -->
+                    <div 
+                      v-for="version in versions.filter((v: any) => v.messageIndex === index)" 
+                      :key="`version-${version.number}`"
+                      class="version-creation-point"
+                    >
+                      <div class="version-divider">
+                        <span class="version-label">버전 {{ version.number }} 생성</span>
+                      </div>
+                      <div class="version-buttons">
+                        <button 
+                          :class="['btn-version', { 'active': currentVersion === version.number }]"
+                          @click="selectVersion(version.number)"
+                        >
+                          버전 {{ version.number }}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </template>
+                  </template>
+                </div>
               </div>
-            </div>
-            
-            <!-- 채팅 입력 컨테이너 -->
-            <div class="chat-input-container">
-              <div class="input-field">
-                <input 
-                  v-model="chatInput"
-                  type="text" 
-                  :placeholder="getChatPlaceholder()"
-                  class="message-input"
-                  :disabled="isChatDisabled()"
-                  @keyup.enter="sendMessage"
-                />
-                <button 
-                  class="btn-send" 
-                  :disabled="isChatDisabled() || !chatInput.trim()"
-                  @click="sendMessage"
-                >
-                  ↑
-                </button>
+              
+              <!-- 채팅 입력 컨테이너 -->
+              <div class="chat-input-container">
+                <div class="input-field">
+                  <input 
+                    v-model="chatInput"
+                    type="text" 
+                    :placeholder="getChatPlaceholder()"
+                    class="message-input"
+                    :disabled="isChatDisabled()"
+                    @keyup.enter="sendMessage"
+                  />
+                  <button 
+                    class="btn-send" 
+                    :disabled="isChatDisabled() || !chatInput.trim()"
+                    @click="sendMessage"
+                  >
+                    ↑
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -111,7 +114,7 @@
                 />
               </div>
             </div>
-            
+
             <!-- 액션 버튼들 -->
             <div class="action-buttons-container">
               <div class="correction-count">남은 정정 횟수: {{ remainingCorrections }}/{{ maxCorrections }}</div>
@@ -129,6 +132,7 @@
                 </button>
               </div>
             </div>
+
           </div>
         </div>
       </div>
@@ -362,8 +366,7 @@ const handleProblemAreaClick = (problemArea: any) => {
     currentAlternatives.value = problemArea.alternatives?.map((alt: string) => ({
       text: alt,
       selected: false
-    })) || []
-    
+    })) || []    
     showRejectionSidebar.value = true
   }
 }
@@ -649,9 +652,6 @@ const tryContextBasedMatching = (problemArea: any, modifiedText: string): { succ
   
   return { success: false, template: template }
 }
-
-
-
 
 // 대안 텍스트에서 실제 수정될 텍스트 추출 (제약사항 태그와 설명 제거)
 const extractModifiedTextFromAlternative = (alternativeText: string): string | null => {
@@ -1073,6 +1073,7 @@ const removeExplanatoryText = (text: string): string => {
     /이\s*텍스트가[^.]*\.\s*/g,
     /이\s*문장이[^.]*\.\s*/g,
     
+
     // 조건부 설명 패턴
     /만약[^.]*\.\s*/g,
     /만약에[^.]*\.\s*/g,
@@ -1201,36 +1202,8 @@ const removeAllMarkers = (): string => {
   return template
 }
 
-// 미리보기용 템플릿 내용 (마커 제거, 사용자에게 보이는 깔끔한 버전)
-const getPreviewTemplateContent = (): string => {
-  let content = templateContent.value
-  
-  console.log('=== 미리보기 템플릿 내용 생성 ===')
-  console.log('원본 템플릿:', content)
-  
-  // 마커 제거 (⟦ID⟧내용⟦/ID⟧ → 내용)
-  const markerPattern = /⟦([^⟦]+)⟧([^⟦]*)⟦\/\1⟧/g
-  content = content.replace(markerPattern, '$2')
-  
-  // 고객에게 보이면 안 되는 내부 메시지 제거
-  content = removeInternalMessages(content)
-  
-  // 설명성 텍스트 제거
-  content = removeExplanatoryText(content)
-  
-  // 템플릿 구조 정리 (줄바꿈과 공백 정리)
-  content = content
-    .replace(/\n\s*\n\s*\n/g, '\n\n')  // 연속된 빈 줄을 2개로 제한
-    .replace(/[ \t]+/g, ' ')           // 연속된 공백을 하나로
-    .replace(/\n[ \t]+/g, '\n')        // 줄 시작의 공백 제거
-    .replace(/[ \t]+\n/g, '\n')        // 줄 끝의 공백 제거
-    .trim()
-  
-  console.log('정리된 미리보기 템플릿:', content)
-  console.log('================================')
-  
-  return content
-}
+// 미리보기용 템플릿 내용은 KakaoPreviewComponent에서 처리
+// 중복 로직 제거로 인해 이 함수는 더 이상 사용되지 않음
 
 
 // 문맥 기반 위치 찾기
@@ -1323,6 +1296,7 @@ const updateMarkerForMultipleEdits = (problemArea: any, modifiedText: string): b
     return true
   }
   
+
   // 새 마커 생성
   const position = findStablePosition(problemArea)
   if (position) {
@@ -1505,8 +1479,7 @@ const submitTemplate = async () => {
       rejectedVariables.value = rejectedVars
       
       console.log('반려된 변수:', rejectedVars)
-      
-      // 반려 상태 설정
+            // 반려 상태 설정
       isRejected.value = true
       showRejectionSidebar.value = true
       
@@ -1784,6 +1757,11 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
   measureAlimtalkHeight()
 }, { deep: true })
 
+// 미리보기용 템플릿 내용 반환
+const getPreviewTemplateContent = () => {
+  return templateContent.value
+}
+
 </script>
 
 <style scoped>
@@ -1799,70 +1777,71 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
 .main-content {
   flex: 1;
   background: linear-gradient(135deg, #E3F2FD 0%, #F1F8E9 100%);
-  padding: 2rem 0 0 0;
+  padding: 3vw 0;
   overflow: auto;
 }
 
 /* 콘텐츠 래퍼 */
 .content-wrapper {
-  max-width: 1400px;
+  display: flex;
+  justify-content: center;
+  align-items:center;
+  width:80vw;
+  height:80vh;
   margin: 0 auto;
-  padding: 0 1.2rem;
 }
 
 /* 좌우 분할 레이아웃 */
 .split-layout {
-  display: flex;
-  gap: 0;
+  width:100%;
   height: 100%;
-  position: relative;
-  min-width: 50rem;
+  display: flex;
+  justify-content: space-between;
 }
 
 /* 분할선 스타일 */
-.split-layout::after {
+/* .split-layout::after {
   content: '';
   position: absolute;
-  left: calc(33.33% + 1rem);
-  top: 0;
+  left: calc(50% + 1rem);
+  top: 15vw;
   bottom: 0;
   width: 0.1rem;
+  height:60vh;
   background: linear-gradient(180deg, transparent, #e0e0e0, transparent);
   box-shadow: 0 0 0.5rem rgba(0, 0, 0, 0.1);
-}
+} */
 
-/* 왼쪽 패널 (채팅 영역) */
+/* 왼쪽 패널 (채팅 영역) - 약간 더 넓게 */
 .left-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 1.2rem;
+
+  width: 35%;
+  height: 100%;
   padding-right: 2rem;
-  width: 20rem;
 }
 
-/* 오른쪽 패널 (미리보기 영역) */
+/* 오른쪽 패널 (미리보기 영역) - 약간 더 좁게 */
 .right-panel {
-  flex: 2;
+  width: 65%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 1.2rem;
-  padding-left: 2rem;
-  min-width: 22rem;
   overflow: visible;
-  position: relative;
+
+  padding-left: 2rem;
+  /* background-color: blue; */
 }
 
 /* 미리보기와 사이드바 컨테이너 */
 .preview-and-sidebar-container {
   display: flex;
-  gap: 1rem;
   transition: transform 0.3s ease;
   align-self: flex-start; /* 상단 정렬 */
-  max-height: 80vh; /* 최대 높이 제한 */
+  flex: 1; /* 남은 공간을 모두 차지 */
   overflow: visible;
-  margin-bottom: 1rem;
   width: 100%;
+  height:70vh;
   justify-content: center;
   align-items: flex-start; /* 자식 요소들을 상단 정렬 */
 }
@@ -2033,15 +2012,28 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
 }
 
 /* ===== 채팅 관련 스타일 ===== */
-/* 채팅 이력 컨테이너 */
-.chat-history-container {
+/* 통합된 채팅 컨테이너 */
+.unified-chat-container {
   background-color: white;
   border-radius: 0.6rem;
-  padding: 1rem;
-  height: 32rem;
+  width: 100%;
+  height: 80vh;
   box-shadow: 0 0.1rem 0.4rem rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
+  border: 0.05rem solid #e9ecef;
+  overflow: hidden;
+}
+
+/* 채팅 이력 컨테이너 */
+.chat-history-container {
+  background-color: #f0f4f8;
+  flex: 1;
+  padding: 1.5rem 0rem 1.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
 }
 
 /* 채팅 이력 목록 */
@@ -2051,13 +2043,35 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
   gap: 0.8rem;
   flex: 1;
   overflow-y: auto;
+  padding-right: 1rem;
+  margin-right: 0;
+}
+
+/* 채팅 이력 스크롤바 스타일링 */
+.chat-history::-webkit-scrollbar {
+  width: 0.4rem;
+  position: absolute;
+  right: 0;
+}
+
+.chat-history::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 0.2rem;
+}
+
+.chat-history::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 0.2rem;
+}
+
+.chat-history::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 
 /* 개별 채팅 메시지 */
 .chat-message {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
 }
 
 /* 사용자 메시지 정렬 */
@@ -2086,7 +2100,7 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
 
 /* 봇 메시지 배경색 */
 .chat-message.bot .message-content {
-  background-color: #f5f5f5;
+  background-color: #cfc8c8;
   color: #333;
 }
 
@@ -2167,10 +2181,9 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
 /* 채팅 입력 컨테이너 */
 .chat-input-container {
   background-color: white;
-  border-radius: 0.6rem;
-  padding: 0.6rem;
-  height: 3.5rem;
-  box-shadow: 0 0.1rem 0.4rem rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  border-top: 0.05rem solid #e9ecef;
+  flex-shrink: 0;
 }
 
 /* 입력 필드 컨테이너 */
@@ -2224,7 +2237,7 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
 
 /* 전송 버튼 호버 효과 */
 .btn-send:hover:not(:disabled) {
-  background-color: #1565c0;
+  background-color: #1976d2;
 }
 
 /* 전송 버튼 비활성화 상태 */
@@ -2239,25 +2252,27 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
 .action-buttons-container {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  position: absolute;
-  bottom: -2rem;
-  left: 0;
-  right: 0;
-  padding: 1rem 0;
-  border-top: 0.05rem solid #e0e0e0;
+  align-items: end;
+  width:100%;
+  height:5vw;
+  padding:0 1vw;
 }
 
 /* 정정 횟수 표시 */
 .correction-count {
-  background-color: #1976d2;
+  background-color:#1976d2;
   color: white;
+  border: none;
   padding: 0.4rem 0.8rem;
   border-radius: 1rem;
-  font-size: 0.9rem;
+  font-size: 1vw;
   font-weight: 500;
-  margin-left: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  min-width: 6rem;
+}
+.correction-count:hover {
+  background-color: #218838;
 }
 
 /* 액션 버튼들 */
@@ -2274,9 +2289,9 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
   color: white;
   border: none;
   padding: 0.4rem 0.8rem;
-  border-radius: 0.2rem;
+  border-radius: 1rem;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 1vw;
   transition: background-color 0.2s ease;
   position: relative;
   min-width: 6rem;

@@ -64,7 +64,3 @@ async def validate_template(backend_request: Dict[str, Any]):
             "total_warnings": 0
         }
 
-
-
-
-
