@@ -41,7 +41,6 @@ interface ProblemArea {
 
 interface KakaoPreviewProps {
   templateContent?: string
-  templateTitle?: string
   showVariables: boolean
   variables: string[]
   isRejected: boolean
@@ -59,6 +58,8 @@ const emit = defineEmits<{
 }>()
 
 const editedVariables = ref({ ...props.variables })
+const isExpanded = ref(false)
+const shouldShowToggle = ref(false)
 
 // 템플릿 내용을 포맷팅하여 변수를 적절한 스타일로 렌더링
 const formattedTemplateContent = computed(() => {
@@ -120,6 +121,7 @@ const formattedTemplateContent = computed(() => {
   console.log('포맷팅 전 content:', content)
   content = formatTemplateContent(content)
   console.log('포맷팅 후 content:', content)
+
 
 
   // 특정 문제 영역 하이라이트
@@ -194,6 +196,7 @@ const highlightModifiedAreas = (content: string, modifiedAreaIds: string[]): str
 const formatTemplateContent = (content: string): string => {
   console.log('formatTemplateContent 입력:', content)
   
+
   // 화살표를 제대로된 포인트로 변환
   content = content.replace(/▶\s*/g, '▶ ')
   content = content.replace(/→\s*/g, '▶ ')
@@ -251,6 +254,7 @@ watch(() => props.variables, (newVariables) => {
   overflow: hidden;
   box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.15);
   width: 320px; /* 16글자 너비 (한글 1글자 = 20px, 공백 반칸 고려) */
+
   flex-shrink: 0;
   align-self: center;
   max-height: none;
@@ -388,6 +392,7 @@ watch(() => props.variables, (newVariables) => {
   background-color: #FFD700;
   border-color: #FFA500;
   transform: scale(1.02);
+
 }
 
 

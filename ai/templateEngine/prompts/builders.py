@@ -383,7 +383,6 @@ class TypePromptBuilder(BasePromptBuilder):
         ]
         return prompt
 
-
 class TemplateTitlePromptBuilder:
     """템플릿 제목 생성 프롬프트 빌더"""
     def __init__(self, userMessage: str):
@@ -453,7 +452,8 @@ class ReferenceBasedTemplatePromptBuilder:
         variable_rules = ""
         if self.extracted_fields:
             variable_rules = "\n\n**중요 변수 처리 규칙:**\n"
-            variable_rules += "다음 텍스트는 반드시 지정된 변수명으로 대체하여 `#{변수명}` 형태로 표현해야 합니다.\n"
+            variable_rules += "다음 텍스트는 반드시 지정된 변수명으로 대체하여 `#{{변수명}}` 형태로 표현해야 합니다.\n"
+            variable_rules += "**모든 변수는 반드시 #{{변수명}} 형태로만 작성해야 합니다. {{변수명}} 형태는 사용하지 마세요.**\n"
             for value, var_name in self.extracted_fields.items():
                 variable_rules += f"- '{value}'는 -> `#{{{var_name}}}'\n`으로 변경하세요.\n"
 
@@ -487,6 +487,7 @@ class ReferenceBasedTemplatePromptBuilder:
             3.  **상세 정보 (선택 사항):** 필요시, '▶' 기호를 사용하여 정보를 항목별로 명확하게 구분합니다.
             4.  **마무리:** "감사합니다." 또는 "많은 이용 부탁드립니다." 와 같은 긍정적인 문장으로 끝맺습니다.
             5.  **발송 근거:** 템플릿 가장 마지막 줄에는 `*`로 시작하는 발송 근거를 반드시 포함해야 합니다. (예: `*본 알림은 정보통신망법에 따라 발송되었습니다.`)
+
             
             **[생성 예시]**
             - 사용자 요청: (장황한 원본 메시지)
@@ -531,7 +532,6 @@ class NewTemplatePromptBuilder:
             public_context = "\n\n=== 카카오 공용 템플릿 참고 ===\n"
             for i, template in enumerate(self.public_templates[:3], 1):
                 public_context += f"{i}. {template.get('text', '')}\n\n"
-
         system_prompt = f"""
             **[당신의 역할]**
             당신은 15년차 카피라이터입니다. 사용자의 장황하고 정제되지 않은 요청을, 카카오 알림톡에 적합한 **간결하고 명확한 '완성형 텍스트'**로 재탄생시키는 임무를 맡았습니다.
@@ -563,6 +563,7 @@ class NewTemplatePromptBuilder:
             위 원칙에 따라, 사용자 요청을 간결한 알림톡 텍스트로 만들어주세요.
             {public_context}
             템플릿 본문 텍스트만 출력합니다.
+
             """
         messages = [
             {"role": "system", "content": system_prompt},

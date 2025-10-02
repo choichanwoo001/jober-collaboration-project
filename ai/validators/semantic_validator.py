@@ -28,6 +28,7 @@ class SemanticValidator:
     VIOLATION_DISPLAY_LIMIT = 3 # 위반 사항 표시 개수
     TEXT_PREVIEW_LENGTH = 100   # 텍스트 미리보기 길이
 
+
     def __init__(self, chromadb_service: ChromaDBService):
         """
         ChromaDBService를 외부에서 주입받아 초기화합니다.
@@ -48,6 +49,7 @@ class SemanticValidator:
         print(f"카테고리: {category}")
 
         # 1) 두 컬렉션 RAG (rejection_reasons + denied_reasons)
+
         print("🔍 rejection_reasons 컬렉션 검색 시작...")
         s_rr = self._rag_stage("rejection_reasons", text, k=REJECTION_REASONS_SEARCH_K, category_sub=category)
         # evidence 중복 제거
@@ -69,6 +71,7 @@ class SemanticValidator:
         
         # 더 높은 위험도를 최종 위험도로 사용
         final_risk = max(rejection_reasons_score, denied_reasons_score)
+
         
         # 위험도 기반 최종 라벨 결정
         if final_risk >= REJECT_THRESHOLD:
@@ -80,7 +83,6 @@ class SemanticValidator:
         
         # 위반 사항 수집
         violations = []
-
         if s_rr.get('label') in ['fail', 'review']:
             for evidence in s_rr.get('evidence', []):
                 if evidence.get('score', 0) >= VIOLATION_THRESHOLD:
@@ -342,6 +344,7 @@ class SemanticValidator:
                 top_k=k,
                 result_format="legacy"
             )
+
         else:
             logger.warning(f"알 수 없는 컬렉션 이름입니다: {collection}")
             hits = []

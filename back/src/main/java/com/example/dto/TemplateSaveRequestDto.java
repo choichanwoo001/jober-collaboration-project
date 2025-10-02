@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 
+
 @Getter
 @Setter
 public class TemplateSaveRequestDto {
@@ -19,6 +20,7 @@ public class TemplateSaveRequestDto {
     
     @JsonProperty("variableList")
     private List<Map<String, String>> variableList = new ArrayList<>();
+
     
     @JsonProperty("category")
     private String category;
@@ -30,6 +32,7 @@ public class TemplateSaveRequestDto {
     private String userMessage;
     
     // Jackson이 Object를 받을 때 Map 배열로 변환하는 메서드
+
     @JsonProperty("variableList")
     public void setVariableList(Object variableListObj) {
         this.variableList = new ArrayList<>();

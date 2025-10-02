@@ -72,6 +72,7 @@ async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any
                 new_category_result = json.loads(await state["openai_service"].chat_completion(messages))
                 new_category_name = new_category_result.get("new_category")
                 await category_service.create_category_if_not_exists(new_category_name)
+                
                 return {
                     "category_sub": new_category_name, "confidence": 95,
                     "selection_reason": f"신규 카테고리 '{new_category_name}' 생성",
@@ -110,6 +111,7 @@ async def generate_template_node(state: TemplateGenerationState) -> Dict[str, An
 
         logger.info("✅ 간결한 템플릿 생성 성공")
         return {"generated_template": generated_text}
+
     except Exception as e:
         logger.error(f"❌ 간결한 템플릿 생성 실패: {e}")
         return {"generated_template": "템플릿 생성에 실패했습니다."}
@@ -120,6 +122,7 @@ async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
     """
     logger.info("=" * 60)
     logger.info("3단계: 의미 블록 및 개별 변수 추출 시작")
+
 
     generated_template = state.get("generated_template")
     if not generated_template or "실패" in generated_template:
@@ -289,8 +292,6 @@ def finalize_node(state: TemplateGenerationState) -> Dict[str, Any]:
 
     # 4. re.sub를 단 한 번만 호출하여 모든 치환을 안전하게 수행합니다.
     final_template_with_vars = pattern.sub(create_variable_syntax, base_template_text)
-
-    # ----------------------------------------------------------------
 
     final_result = {
         "pipeline_success": True,

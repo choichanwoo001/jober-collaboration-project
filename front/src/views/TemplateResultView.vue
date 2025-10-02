@@ -82,7 +82,7 @@
               <!-- 카카오톡 미리보기 -->
               <div class="kakao-preview-wrapper" ref="kakaoPreviewRef">
                 <KakaoPreviewComponent
-                  :template-content="templateContent"
+                  :template-content="getPreviewTemplateContent()"
                   :template-title="templateTitle"
                   :show-variables="showVariables"
                   :variables="editedVariables"
@@ -366,8 +366,7 @@ const handleProblemAreaClick = (problemArea: any) => {
     currentAlternatives.value = problemArea.alternatives?.map((alt: string) => ({
       text: alt,
       selected: false
-    })) || []
-    
+    })) || []    
     showRejectionSidebar.value = true
   }
 }
@@ -653,9 +652,6 @@ const tryContextBasedMatching = (problemArea: any, modifiedText: string): { succ
   
   return { success: false, template: template }
 }
-
-
-
 
 // 대안 텍스트에서 실제 수정될 텍스트 추출 (제약사항 태그와 설명 제거)
 const extractModifiedTextFromAlternative = (alternativeText: string): string | null => {
@@ -1077,6 +1073,7 @@ const removeExplanatoryText = (text: string): string => {
     /이\s*텍스트가[^.]*\.\s*/g,
     /이\s*문장이[^.]*\.\s*/g,
     
+
     // 조건부 설명 패턴
     /만약[^.]*\.\s*/g,
     /만약에[^.]*\.\s*/g,
@@ -1299,6 +1296,7 @@ const updateMarkerForMultipleEdits = (problemArea: any, modifiedText: string): b
     return true
   }
   
+
   // 새 마커 생성
   const position = findStablePosition(problemArea)
   if (position) {
@@ -1481,8 +1479,7 @@ const submitTemplate = async () => {
       rejectedVariables.value = rejectedVars
       
       console.log('반려된 변수:', rejectedVars)
-      
-      // 반려 상태 설정
+            // 반려 상태 설정
       isRejected.value = true
       showRejectionSidebar.value = true
       

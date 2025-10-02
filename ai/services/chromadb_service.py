@@ -51,7 +51,6 @@ class ChromaDBService:
             for col in required_collections:
                 self.collections[col] = self.client.get_or_create_collection(col)
                 logger.info(f"✅ 컬렉션 준비 완료: {col}")
-            self.is_mock = False
         except Exception as e:
             logger.error(f"❌ ChromaDB 연결 또는 컬렉션 로드 실패: {e}", exc_info=True)
             self.client = None
@@ -66,7 +65,6 @@ class ChromaDBService:
             return
         # 초기화 완료 표시
         self._initialized = True
-
 
     def search_templates(self, 
                         collection_name: str, 
@@ -87,7 +85,6 @@ class ChromaDBService:
         Returns:
             List[Dict]: 검색된 템플릿 리스트 (유사도 기준 정렬됨)
         """
-
 
         # 컬렉션 선택
         if collection_name == "approved_templates":

@@ -53,7 +53,6 @@ class AlimtalkValidationService:
         if self.is_initialized:
             return
             
-
         # ChromaDB 초기화 - 정책 문서 및 승인된 템플릿 데이터 로드
         await self.chromadb_service.initialize()
         
@@ -139,6 +138,7 @@ class AlimtalkValidationService:
                         "variable_name": None,
                         "stage": result.stage
                     })
+
             
             response = ValidationResponse(
                 success=success,
@@ -524,4 +524,3 @@ class AlimtalkValidationService:
                 problem_areas.append(problem_area)
         
         return problem_areas
-   

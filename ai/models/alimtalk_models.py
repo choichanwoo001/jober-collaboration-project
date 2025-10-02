@@ -227,7 +227,6 @@ class TemplateModificationRequest(BaseModel):
     chat_history: List[Dict[str, Any]] = []
     variableList: List[str] = []
 
-
 class TemplateModificationResponse(BaseModel):
     """템플릿 수정 응답 모델"""
     modified_template: str

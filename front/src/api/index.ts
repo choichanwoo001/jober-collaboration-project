@@ -156,6 +156,7 @@ export const templateApi = {
   validateTemplate: (templateContent: string, variableList: string[], category?: string, userMessage?: string, templateTitle?: string, templateId?: string) => {
     // variableList를 딕셔너리 배열로 변환
     const variableDictList = convertToStringArray(variableList)
+
     
     // 백엔드 ValidationRequest 형식에 맞게 데이터 변환
     const validationRequest = {
@@ -196,6 +197,7 @@ export const templateApi = {
     const saveRequest = {
       templateContent: templateContent,
       variableList: variableDictList,  // 딕셔너리 배열로 전달
+
       category: category,
       userMessage: userMessage,
       templateTitle: templateTitle

@@ -78,3 +78,4 @@ async def run_template_generation_pipeline(
         logger.error(f"❌ 파이프라인 전체 실행 실패: {e}", exc_info=True)
         # ... (에러 처리 로직)
         return {}
+

@@ -22,7 +22,6 @@ router = APIRouter(tags=["알림톡 검증"])
 # 전역 서비스 인스턴스
 validation_service = AlimtalkValidationService()
 
-
 @router.post("/template/validate")
 async def validate_template(backend_request: Dict[str, Any]):
     """
@@ -64,3 +63,4 @@ async def validate_template(backend_request: Dict[str, Any]):
             "total_errors": 0,
             "total_warnings": 0
         }
+

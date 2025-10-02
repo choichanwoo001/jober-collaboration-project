@@ -185,6 +185,7 @@ public class TemplateService {
     //     if (requestDto.getVariableList() != null && !requestDto.getVariableList().isEmpty()) {
     //         for (Map<String, String> variableMap : requestDto.getVariableList()) {
     //             String variableKey = variableMap.get("variableKey");
+
     //             Var variable = Var.builder()
     //                     .variableKey(variableKey)
     //                     .build();
