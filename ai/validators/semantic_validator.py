@@ -4,6 +4,7 @@ from typing import Dict, Any, List
 
 from services.chromadb_service import ChromaDBService
 from models.alimtalk_models import ValidationResult
+
 from .config import (
     REJECT_THRESHOLD, REVIEW_THRESHOLD, VIOLATION_THRESHOLD,
     REJECTION_REASONS_SEARCH_K, EVIDENCE_LIMIT, VIOLATION_DISPLAY_LIMIT, TEXT_PREVIEW_LENGTH,
@@ -14,7 +15,18 @@ logger = logging.getLogger(__name__)
 
 
 class SemanticValidator:
-    """의미적 검증기 (RAG + 룰 기반) - 의존성 주입 방식 적용"""
+    """의미적 검증기 (RAG 기반) - 의존성 주입 방식 적용"""
+    
+    # 하이퍼 파라미터 상수
+    REJECT_THRESHOLD = 0.6      # 거부 임계값 (60% 이상)
+    REVIEW_THRESHOLD = 0.4      # 검토 임계값 (40% 이상)
+    VIOLATION_THRESHOLD = 0.4   # 위반 수집 임계값
+    
+    APPROVED_SEARCH_K = 6       # 승인 템플릿 검색 개수
+    PUBLIC_SEARCH_K = 5         # 공용 템플릿 검색 개수
+    EVIDENCE_LIMIT = 3          # evidence 수집 개수
+    VIOLATION_DISPLAY_LIMIT = 3 # 위반 사항 표시 개수
+    TEXT_PREVIEW_LENGTH = 100   # 텍스트 미리보기 길이
 
     def __init__(self, chromadb_service: ChromaDBService):
         """
@@ -31,6 +43,7 @@ class SemanticValidator:
         print("🔍 SemanticValidator.validate() 시작")
         text = f"{template.get('template_title','')} {template.get('template_content','')}".strip()
         category = template.get("category")
+        
         print(f"검증 대상 텍스트: {text[:TEXT_PREVIEW_LENGTH]}...")
         print(f"카테고리: {category}")
 
@@ -67,6 +80,7 @@ class SemanticValidator:
         
         # 위반 사항 수집
         violations = []
+
         if s_rr.get('label') in ['fail', 'review']:
             for evidence in s_rr.get('evidence', []):
                 if evidence.get('score', 0) >= VIOLATION_THRESHOLD:
@@ -79,6 +93,7 @@ class SemanticValidator:
         
         if s_dn.get('label') in ['fail', 'review']:
             for evidence in s_dn.get('evidence', []):
+
                 if evidence.get('score', 0) >= VIOLATION_THRESHOLD:
                     violations.append({
                         "source": "blacklist",
@@ -86,9 +101,9 @@ class SemanticValidator:
                         "evidence": evidence.get('evidence', ''),
                         "score": evidence.get('score', 0)
                     })
+
         # violations 중복 제거
         violations = self._deduplicate_violations(violations)
-
         decision_source = "heuristic"
         needs_review: bool = False
         warnings: List[str] = []
@@ -111,6 +126,7 @@ class SemanticValidator:
         print(f"   👥 사람 검토 필요: {'예' if needs_review else '아니오'}")
         if violations:
             print(f"   🚫 위반 사항 상세:")
+
             for i, v in enumerate(violations[:VIOLATION_DISPLAY_LIMIT], 1):  # 최대 3개만 표시
                 print(f"      {i}. {v.get('reason', '알 수 없는 사유')} (출처: {v.get('source', '알 수 없음')})")
 
@@ -143,6 +159,7 @@ class SemanticValidator:
             else:
                 seen[key] = v
         return list(seen.values())
+
 
     def _rule_based_blacklist_stage(self, text: str) -> Dict[str, Any]:
         """

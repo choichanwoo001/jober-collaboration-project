@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from core.database import get_db
 from sqlalchemy.orm import Session
 from core.database import get_db
 import logging
@@ -12,6 +13,7 @@ from services.openai_service import OpenAIService
 from services.category_service import CategoryService
 from services.chromadb_service import ChromaDBService
 from templateEngine.pipeline import run_template_generation_pipeline
+from core.database import SessionLocal
 from templateEngine.prompts.message_analyzer_prompts import PromptDefense, UnsuitableMessageError
 from templateEngine.prompts.builders import SuitabilityCheckPromptBuilder
 
@@ -42,6 +44,9 @@ async def generate_template_endpoint(
     """
     LangGraph 기반의 지능형 템플릿 생성 파이프라인을 실행합니다.
     """
+    # [삭제] CategoryService를 여기서 직접 호출할 필요가 없습니다.
+    # category_service = CategoryService(db_session)
+    # category_sub_list= await category_service.get_all_categories()
     try:
         sanitize_userMessage = PromptDefense.sanitize_user_input(request.userMessage)
 
@@ -68,6 +73,7 @@ async def generate_template_endpoint(
             chromadb_service=chromadb_service,
             db_session=db_session  # <--- db_session을 전달합니다.
         )
+
 
         if not result.get("pipeline_success", False):
             # 파이프라인 내부에서 정상적으로 종료되었지만 실패한 경우

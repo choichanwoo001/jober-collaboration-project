@@ -53,6 +53,7 @@ class AlimtalkValidationService:
         if self.is_initialized:
             return
             
+
         # ChromaDB 초기화 - 정책 문서 및 승인된 템플릿 데이터 로드
         await self.chromadb_service.initialize()
         
@@ -124,6 +125,20 @@ class AlimtalkValidationService:
             # 오류 및 경고 개수 계산
             total_errors = sum(1 for area in problem_areas if area.severity == "error")
             total_warnings = sum(1 for area in problem_areas if area.severity == "warning")
+            
+            # validation_errors 생성
+            validation_errors = []
+            for result in validation_results:
+                for error in result.errors:
+                    validation_errors.append({
+                        "rule_type": f"{result.stage}_validation",
+                        "rule": "알림톡 승인 규칙",
+                        "reason": error,
+                        "suggestion": "AI에서 생성된 수정 제안을 참고해주세요",
+                        "severity": "error",
+                        "variable_name": None,
+                        "stage": result.stage
+                    })
             
             response = ValidationResponse(
                 success=success,
@@ -509,5 +524,4 @@ class AlimtalkValidationService:
                 problem_areas.append(problem_area)
         
         return problem_areas
-    
-
+   

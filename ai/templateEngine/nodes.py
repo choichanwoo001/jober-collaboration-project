@@ -17,6 +17,7 @@ from templateEngine.prompts.builders import (
     NewCategoryPromptBuilder,
     TemplateWriterBuilder,  # [수정] 템플릿 생성 전용 빌더
     FieldsPromptBuilder,      # [수정] 필드/블록 추출 전용 빌더
+    IndividualVariableExtractor,
     ReferenceBasedTemplatePromptBuilder # 참고 기반 생성을 위해 유지
 )
 
@@ -94,88 +95,112 @@ async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any
 
 async def generate_template_node(state: TemplateGenerationState) -> Dict[str, Any]:
     """
-    [2단계] 참고 템플릿 기반으로 템플릿을 생성하는 노드
+    [2단계] '변수 없는' 간결한 템플릿 텍스트를 생성하는 노드
     """
     logger.info("=" * 60)
-    logger.info("2단계: 참고 템플릿 기반 템플릿 생성 시작")
+    logger.info("2단계: 간결한 템플릿 생성 시작")
     try:
-        # 1. RAG 검색을 통해 참고 템플릿 가져오기
-        user_message = state["userMessage"]
-        category_result = state.get("category_result", {})
-        category_sub = category_result.get("category_sub", "기타")
-        
-        logger.info(f"참고 템플릿 검색 시작 - 카테고리: {category_sub}")
-        reference_templates = state["chromadb_service"].search_templates(
-            collection_name="approved_templates",
-            query_text=user_message,
-            top_k=3,
-            category_sub=category_sub
-        )
-        
-        logger.info(f"참고 템플릿 {len(reference_templates)}개 발견")
-        
-        # 2. 추출된 필드 정보 가져오기 (초기 분석에서 추출된 정보)
-        extracted_fields = state.get("extracted_fields", {})
-        
-        # 3. ReferenceBasedTemplatePromptBuilder 사용
-        if reference_templates and len(reference_templates) > 0:
-            logger.info("참고 템플릿 기반 생성 사용")
-            prompt_builder = ReferenceBasedTemplatePromptBuilder(
-                userMessage=user_message,
-                reference_templates=reference_templates,
-                extracted_fields=extracted_fields
-            )
-        else:
-            logger.info("참고 템플릿이 없어 신규 생성 사용")
-            # 참고 템플릿이 없는 경우 기존 방식 사용
-            prompt_builder = TemplateWriterBuilder(user_message)
-        
+        # RAG 검색을 먼저 수행하여 참고 템플릿을 가져올 수 있습니다 (선택적)
+        # 여기서는 단순화된 '신규 생성' 로직만 구현합니다.
+
+        # TemplateWriterBuilder를 사용하여 간결한 텍스트 생성
+        prompt_builder = TemplateWriterBuilder(state["userMessage"])
         messages = prompt_builder.build()
         generated_text = await state["openai_service"].chat_completion(messages)
+
+        logger.info("✅ 간결한 템플릿 생성 성공")
+        return {"generated_template": generated_text}
+    except Exception as e:
+        logger.error(f"❌ 간결한 템플릿 생성 실패: {e}")
+        return {"generated_template": "템플릿 생성에 실패했습니다."}
+
+async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
+    """
+    [최종 수정] '의미 블록'과 '개별 변수'를 두 단계로 나누어 추출하고 결과를 병합합니다.
+    """
+    logger.info("=" * 60)
+    logger.info("3단계: 의미 블록 및 개별 변수 추출 시작")
+
+    generated_template = state.get("generated_template")
+    if not generated_template or "실패" in generated_template:
+        logger.warning("⚠️ 템플릿 생성이 실패하여 추출을 건너뜁니다.")
+        return {"extracted_fields": {}}
+
+    try:
+        # --- 1단계: '의미 블록' 추출 ---
+        logger.info("  - (3-1) 의미 블록 추출 중...")
+        block_builder = FieldsPromptBuilder(generated_template)
+        block_messages = block_builder.build()
+        block_response = await state["openai_service"].chat_completion(block_messages)
+        block_fields = json.loads(block_response)
+        logger.info(f"  ✅ 의미 블록 추출 성공: {list(block_fields.keys())}")
+
+        # --- 2단계: '개별 변수' 추출 ---
+        logger.info("  - (3-2) 개별 변수 추출 중...")
+        variable_builder = IndividualVariableExtractor(generated_template)
+        variable_messages = variable_builder.build()
+        variable_response = await state["openai_service"].chat_completion(variable_messages)
+        individual_variables = json.loads(variable_response)
+        logger.info(f"  ✅ 개별 변수 추출 성공: {list(individual_variables.keys())}")
+
+        # --- 3단계: 두 결과 병합 ---
+        # individual_variables를 먼저 두고, block_fields로 덮어씁니다.
+        # 이렇게 하면, 만약 중복된 Key가 있더라도 더 큰 범위인 '의미 블록'의 값이 유지됩니다.
+        final_extracted_fields = {**individual_variables, **block_fields}
+
+        # '고객님' -> '고객' 후처리 로직은 여전히 유효합니다.
+        if "customer_title" in final_extracted_fields:
+            original_title = final_extracted_fields["customer_title"]
+            if original_title.endswith("님") and len(original_title) > 1:
+                final_extracted_fields["customer_title"] = original_title[:-1]
+                logger.info("  - (후처리) 'customer_title' 교정 완료.")
+
+        logger.info(f"✅ 최종 필드 병합 완료. 총 {len(final_extracted_fields)}개의 변수/블록 추출.")
+        return {"extracted_fields": final_extracted_fields}
 
         logger.info("✅ 템플릿 생성 성공")
         return {"generated_template": generated_text}
     except Exception as e:
-        logger.error(f"❌ 템플릿 생성 실패: {e}")
-        return {"generated_template": "템플릿 생성에 실패했습니다."}
-
-
-async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
-    """
-    [3단계] 생성된 템플릿에서 의미 블록과 변수를 추출하고, '후처리'로 결과를 교정합니다.
-    """
-    logger.info("=" * 60)
-    logger.info("3단계: 의미 블록 추출 시작")
-    try:
-        generated_template = state.get("generated_template")
-        if not generated_template or "실패" in generated_template:
-            logger.warning("⚠️ 이전 단계에서 템플릿 생성이 실패하여 블록 추출을 건너뜁니다.")
-            return {"extracted_fields": {}}
-
-        # 1. AI에게 평소처럼 추출을 요청합니다.
-        prompt_builder = FieldsPromptBuilder(generated_template)
-        messages = prompt_builder.build()
-        response = await state["openai_service"].chat_completion(messages)
-        extracted_fields = json.loads(response)
-
-        logger.info(f"✅ (1차) AI의 의미 블록 추출 성공: {len(extracted_fields)}개")
-        logger.debug(f"  - AI 원본 추출 결과: {extracted_fields}")
-
-        # --- [핵심 수정] 후처리(Post-processing) 로직 ---
-        # 2. AI가 추출한 결과에서 'customer_title' 값을 직접 확인하고 교정합니다.
-        if "customer_title" in extracted_fields:
-            original_title = extracted_fields["customer_title"]
-            # 만약 값이 '고객님', '회원님' 등 '님'으로 끝나면, '님'을 제거합니다.
-            if original_title.endswith("님") and len(original_title) > 1:
-                corrected_title = original_title[:-1] # 마지막 글자('님')를 제거
-                extracted_fields["customer_title"] = corrected_title
-                logger.info(f"✅ (2차) 후처리 교정 완료: 'customer_title'을 '{original_title}'에서 '{corrected_title}'(으)로 수정했습니다.")
-        # ----------------------------------------------------
-
-        return {"extracted_fields": extracted_fields}
-    except Exception as e:
-        logger.error(f"❌ 의미 블록 추출 실패: {e}")
+        logger.error(f"❌ 블록/변수 추출 과정에서 오류 발생: {e}")
         return {"extracted_fields": {}}
+
+
+# async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
+#     """
+#     [3단계] 생성된 템플릿에서 의미 블록과 변수를 추출하고, '후처리'로 결과를 교정합니다.
+#     """
+#     logger.info("=" * 60)
+#     logger.info("3단계: 의미 블록 추출 시작")
+#     try:
+#         generated_template = state.get("generated_template")
+#         if not generated_template or "실패" in generated_template:
+#             logger.warning("⚠️ 이전 단계에서 템플릿 생성이 실패하여 블록 추출을 건너뜁니다.")
+#             return {"extracted_fields": {}}
+#
+#         # 1. AI에게 평소처럼 추출을 요청합니다.
+#         prompt_builder = FieldsPromptBuilder(generated_template)
+#         messages = prompt_builder.build()
+#         response = await state["openai_service"].chat_completion(messages)
+#         extracted_fields = json.loads(response)
+#
+#         logger.info(f"✅ (1차) AI의 의미 블록 추출 성공: {len(extracted_fields)}개")
+#         logger.debug(f"  - AI 원본 추출 결과: {extracted_fields}")
+#
+#         # --- [핵심 수정] 후처리(Post-processing) 로직 ---
+#         # 2. AI가 추출한 결과에서 'customer_title' 값을 직접 확인하고 교정합니다.
+#         if "customer_title" in extracted_fields:
+#             original_title = extracted_fields["customer_title"]
+#             # 만약 값이 '고객님', '회원님' 등 '님'으로 끝나면, '님'을 제거합니다.
+#             if original_title.endswith("님") and len(original_title) > 1:
+#                 corrected_title = original_title[:-1] # 마지막 글자('님')를 제거
+#                 extracted_fields["customer_title"] = corrected_title
+#                 logger.info(f"✅ (2차) 후처리 교정 완료: 'customer_title'을 '{original_title}'에서 '{corrected_title}'(으)로 수정했습니다.")
+#         # ----------------------------------------------------
+#
+#         return {"extracted_fields": extracted_fields}
+#     except Exception as e:
+#         logger.error(f"❌ 의미 블록 추출 실패: {e}")
+#         return {"extracted_fields": {}}
 
 
 # def finalize_node(state: TemplateGenerationState) -> Dict[str, Any]:
@@ -267,9 +292,6 @@ def finalize_node(state: TemplateGenerationState) -> Dict[str, Any]:
 
     # ----------------------------------------------------------------
 
-    generated_title = state.get("generated_title", "제목 없음")
-    logger.info(f"📝 최종 제목 설정: {generated_title}")
-    
     final_result = {
         "pipeline_success": True,
         "template_text": final_template_with_vars,

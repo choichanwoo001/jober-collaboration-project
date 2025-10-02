@@ -67,6 +67,7 @@ class ChromaDBService:
         # 초기화 완료 표시
         self._initialized = True
 
+
     def search_templates(self, 
                         collection_name: str, 
                         query_text: str, 
@@ -87,6 +88,7 @@ class ChromaDBService:
             List[Dict]: 검색된 템플릿 리스트 (유사도 기준 정렬됨)
         """
 
+
         # 컬렉션 선택
         if collection_name == "approved_templates":
             collection = self.collections.get("approved_templates")
@@ -94,9 +96,6 @@ class ChromaDBService:
         elif collection_name == "public_templates":
             collection = self.collections.get("public_templates")
             logger.info("  - 검색 대상: 공용 템플릿")
-        elif collection_name == "blacklist":
-            collection = self.collections.get("blacklist")
-            logger.info("  - 검색 대상: 블랙리스트")
         elif collection_name == "denied_templates":
             collection = self.collections.get("denied_templates")
             logger.info("  - 검색 대상: 반려된 템플릿")

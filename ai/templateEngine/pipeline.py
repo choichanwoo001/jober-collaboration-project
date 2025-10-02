@@ -69,6 +69,7 @@ async def run_template_generation_pipeline(
         logger.info("=" * 80)
         logger.info("파이프라인 실행 완료!")
         return final_state.get("final_result", {})
+
     except UnsuitableMessageError as e:
         # API 레벨에서 직접 처리해야 할 특정 예외는 그대로 다시 발생시킵니다.
         logger.warning(f"파이프라인 실행 중 제어된 예외 발생(부적합 메시지): {e}")
