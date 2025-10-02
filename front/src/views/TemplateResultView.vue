@@ -1757,6 +1757,11 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
   measureAlimtalkHeight()
 }, { deep: true })
 
+// 미리보기용 템플릿 내용 반환
+const getPreviewTemplateContent = () => {
+  return templateContent.value
+}
+
 </script>
 
 <style scoped>
