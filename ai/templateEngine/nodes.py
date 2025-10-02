@@ -297,7 +297,7 @@ def finalize_node(state: TemplateGenerationState) -> Dict[str, Any]:
         "template_text": final_template_with_vars,
         "variable_mapping": extracted_fields,
         "variables": list(extracted_fields.keys()),
-        "template_title": generated_title,
+        "template_title": state.get("generated_title", "제목 없음"),
         "message_type": state.get("message_type_result", {}).get("type"),
         "category_sub": state.get("category_result", {}).get("category_sub"),
     }
