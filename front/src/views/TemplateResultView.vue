@@ -1787,7 +1787,6 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
   width:80vw;
   height:80vh;
   margin: 0 auto;
-  //background-color: lime;
 }
 
 /* 좌우 분할 레이아웃 */
@@ -1796,8 +1795,6 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
   height: 100%;
   display: flex;
   justify-content: space-between;
-  //background-color: green;
-
 }
 
 /* 분할선 스타일 */
@@ -1845,7 +1842,6 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
   height:70vh;
   justify-content: center;
   align-items: flex-start; /* 자식 요소들을 상단 정렬 */
-  //background-color: yellow;
 }
 
 /* 반려 사이드바가 열렸을 때의 상태 */
@@ -2258,23 +2254,23 @@ watch([templateContent, templateTitle, editedVariables, showVariables], () => {
   width:100%;
   height:5vw;
   padding:0 1vw;
-  border-top: 0.05rem solid #e0e0e0;
-  //background-color:red;
 }
 
 /* 정정 횟수 표시 */
 .correction-count {
-  background-color: #1976d2;
+  background-color:#1976d2;
   color: white;
-  padding: 0.8vw 1vw;
-  border-radius: 0.3vw;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 1rem;
   font-size: 1vw;
   font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  min-width: 6rem;
 }
 .correction-count:hover {
-  transition: background-color 0.2s ease;
-  background-color: #0366b1;
-  cursor:pointer;
+  background-color: #218838;
 }
 
 /* 액션 버튼들 */
