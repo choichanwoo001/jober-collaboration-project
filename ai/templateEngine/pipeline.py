@@ -2,90 +2,70 @@
 
 import asyncio
 from typing import Dict, List
-from .state import TemplateGenerationState
-from .nodes import (
-    check_message_suitability_node,
-    classify_message_type_node,
-    parallel_title_category_node,
-    search_templates_node,
-    extract_fields_node,
-    decide_generation_method,
-    generate_with_reference_node,
-    search_public_and_generate_node,
-    finalize_result_node
+from templateEngine.state import TemplateGenerationState
+# [수정] 새로운 노드들을 임포트
+from templateEngine.nodes import (
+    initial_analysis_node,
+    generate_template_node,
+    extract_blocks_node,
+    finalize_node
 )
 from services.openai_service import OpenAIService
 from services.chromadb_service import ChromaDBService
 from langgraph.graph import StateGraph, END
 from .prompts.message_analyzer_prompts import UnsuitableMessageError
 import logging
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 async def create_pipeline() -> StateGraph:
+    """
+    [최종 수정] '생성 후 추출' 아키텍처에 맞는 파이프라인 구성
+    """
     workflow = StateGraph(TemplateGenerationState)
-    workflow.add_node("check_suitability", check_message_suitability_node)
-    workflow.add_node("classify_type", classify_message_type_node)
-    workflow.add_node("title_category_parallel", parallel_title_category_node)
-    workflow.add_node("search_templates", search_templates_node)
-    workflow.add_node("extract_fields", extract_fields_node)
-    workflow.add_node("generate_with_reference", generate_with_reference_node)
-    workflow.add_node("search_public_and_generate", search_public_and_generate_node)
-    workflow.add_node("finalize_result", finalize_result_node)
 
-    # workflow.set_entry_point("classify_type")
-    workflow.set_entry_point("check_suitability")
-    workflow.add_edge("check_suitability", "classify_type")
-    workflow.add_edge("classify_type", "title_category_parallel")
-    workflow.add_edge("title_category_parallel", "search_templates")
-    workflow.add_edge("search_templates", "extract_fields")
-    workflow.add_conditional_edges(
-        "extract_fields",
-        decide_generation_method,
-        {"with_reference": "generate_with_reference", "search_public": "search_public_and_generate"}
-    )
-    workflow.add_edge("generate_with_reference", "finalize_result")
-    workflow.add_edge("search_public_and_generate", "finalize_result")
-    workflow.add_edge("finalize_result", END)
+    # 4개의 핵심 노드 등록
+    workflow.add_node("initial_analysis", initial_analysis_node)
+    workflow.add_node("generate_template", generate_template_node)
+    workflow.add_node("extract_blocks", extract_blocks_node)
+    workflow.add_node("finalize", finalize_node)
+
+    # 파이프라인 순서 정의
+    workflow.set_entry_point("initial_analysis")
+    workflow.add_edge("initial_analysis", "generate_template")
+    workflow.add_edge("generate_template", "extract_blocks")
+    workflow.add_edge("extract_blocks", "finalize")
+    workflow.add_edge("finalize", END)
 
     return workflow.compile()
 
 async def run_template_generation_pipeline(
         userMessage: str,
-        category_sub_list: List[str],
-        openai_service: OpenAIService, # 👈 의존성 주입으로 받음
-        chromadb_service: ChromaDBService # 👈 의존성 주입으로 받음
+        openai_service: OpenAIService,
+        chromadb_service: ChromaDBService,
+        db_session: Session
 ) -> Dict:
-    """템플릿 생성 파이프라인 실행 및 예외 처리"""
+    """
+    '생성 후 추출' 파이프라인 실행 함수
+    """
     logger.info("=" * 80)
-    logger.info("카카오 알림톡 템플릿 생성 파이프라인 시작")
+    logger.info("'생성 후 추출' 파이프라인 시작")
     try:
-        app = await create_pipeline()
-        """
-        initial_state
-        - 파이프라인 처리용 내부 컨테이너
-        - 파이프라인 각 단계에서 데이터가 오가고 누적되는 임시 컨테이너 역할
-        - 최종적으로 사용자에게 반환할 데이터(GenerationResponse)보다 더 많은 정보가 들어있어도 문제 없음.
-        """
         initial_state = {
             "userMessage": userMessage,
-            "category_sub_list": category_sub_list,
+            "db_session": db_session,
             "openai_service": openai_service,
             "chromadb_service": chromadb_service,
-            "suitability_check_result": None,
-            "message_type_result": None,
-            "category_result": None,
-            "generated_title": None,
-            "similar_templates": [],
-            "max_similarity": 0.0,
-            "pulblic_templates": [],
-            "generation_hint": None,
             "generated_template": "",
             "extracted_fields": {},
             "final_result": {}
+            # ... 기타 초기 상태값
         }
-        logger.info("파이프라인 실행 시작")
+
+        app = await create_pipeline()
         final_state = await app.ainvoke(initial_state)
+
         logger.info("=" * 80)
         logger.info("파이프라인 실행 완료!")
         return final_state.get("final_result", {})
@@ -95,11 +75,5 @@ async def run_template_generation_pipeline(
         raise e
     except Exception as e:
         logger.error(f"❌ 파이프라인 전체 실행 실패: {e}", exc_info=True)
-        return {
-            "pipeline_success": False,
-            "error_message": f"파이프라인 실행 중 오류 발생: {str(e)}",
-            "template_text": "", "template_title": "생성 실패", "variables": [],
-            "generation_method": "error", "message_type": None, "category_sub": None,
-            "category_analysis": None, "similarity_score": 0.0,
-            "reference_templates": [], "pulblic_templates": [],
-        }
+        # ... (에러 처리 로직)
+        return {}

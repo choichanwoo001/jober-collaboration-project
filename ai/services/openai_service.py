@@ -1,6 +1,5 @@
-import openai
 import os
-from typing import List, Dict, Any
+from typing import List, Dict
 from openai import AsyncOpenAI
 
 class OpenAIService:
@@ -16,49 +15,18 @@ class OpenAIService:
                 model=model,
                 messages=messages,
                 max_completion_tokens=1000,
-                temperature=0.5
+                temperature=0.2
             )
             return response.choices[0].message.content
         except Exception as e:
             raise Exception(f"OpenAI API 호출 실패: {str(e)}")
     
-    async def text_completion(self, prompt: str, model: str = "text-davinci-003") -> str:
+    async def generate_response(self, prompt: str, model: str = "gpt-4o-mini") -> str:
         """
-        OpenAI 텍스트 완성 API 호출
+        프롬프트를 받아서 OpenAI 응답을 생성하는 편의 메서드
         """
-        try:
-            response = await self.client.completions.create(
-                model=model,
-                prompt=prompt,
-                max_tokens=1000,
-                temperature=0.7
-            )
-            return response.choices[0].text
-        except Exception as e:
-            raise Exception(f"OpenAI API 호출 실패: {str(e)}")
-    
-    async def embeddings(self, text: str, model: str = "text-embedding-ada-002") -> List[float]:
-        """
-        OpenAI 임베딩 API 호출
-        """
-        try:
-            response = await self.client.embeddings.create(
-                model=model,
-                input=text
-            )
-            return response.data[0].embedding
-        except Exception as e:
-            raise Exception(f"OpenAI 임베딩 API 호출 실패: {str(e)}")
-    
-    async def batch_embeddings(self, texts: List[str], model: str = "text-embedding-ada-002") -> List[List[float]]:
-        """
-        여러 텍스트의 임베딩을 일괄 처리
-        """
-        try:
-            response = await self.client.embeddings.create(
-                model=model,
-                input=texts
-            )
-            return [data.embedding for data in response.data]
-        except Exception as e:
-            raise Exception(f"OpenAI 배치 임베딩 API 호출 실패: {str(e)}")
+        messages = [
+            {"role": "system", "content": "알림톡 템플릿 검증 전문가입니다."},
+            {"role": "user", "content": prompt}
+        ]
+        return await self.chat_completion(messages, model)
