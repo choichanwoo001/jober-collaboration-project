@@ -60,9 +60,18 @@ async def generate_template_endpoint(
         try:
             suitability_data = json.loads(suitability_result)
             if not suitability_data.get("is_suitable", True):
-                # 부적합한 메시지인 경우 에러 반환
+                # 부적합한 메시지인 경우 사용자 친화적인 에러 메시지 반환
                 reason = suitability_data.get("reason", "메시지가 알림톡 템플릿 생성에 적합하지 않습니다.")
-                raise HTTPException(status_code=400, detail=f"부적합한 메시지: {reason}")
+                
+                # 사용자 친화적인 메시지로 변환
+                if "욕설" in reason or "부적절한 언어" in reason:
+                    user_message = "입력하신 내용에 부적절한 표현이 포함되어 있습니다. 다시 작성해 주세요."
+                elif "무관한 내용" in reason:
+                    user_message = "알림톡 템플릿과 관련 없는 내용입니다. 서비스 안내나 고객 소통 관련 내용으로 다시 작성해 주세요."
+                else:
+                    user_message = "입력하신 내용을 알림톡 템플릿으로 생성할 수 없습니다. 다시 작성해 주세요."
+                
+                raise HTTPException(status_code=400, detail=user_message)
         except json.JSONDecodeError:
             # JSON 파싱 실패 시 로그만 남기고 계속 진행
             logger.warning(f"적합성 검사 응답 파싱 실패: {suitability_result}")
@@ -102,6 +111,7 @@ async def generate_template_endpoint(
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"API 엔드포인트 오류: {str(e)}")
+        # 사용자 친화적인 오류 메시지로 변경
+        raise HTTPException(status_code=500, detail="템플릿 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
 
 

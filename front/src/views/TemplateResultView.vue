@@ -1357,6 +1357,23 @@ const updateMarkerForMultipleEdits = (problemArea: any, modifiedText: string): b
 // 버전 선택
 const selectVersion = (versionNumber: number) => {
   currentVersion.value = versionNumber
+  
+  // 선택된 버전의 템플릿 내용 로드
+  const versionTemplate = versionTemplates.value[versionNumber]
+  if (versionTemplate) {
+    templateContent.value = versionTemplate.content
+    templateTitle.value = versionTemplate.title
+    templateVariables.value = versionTemplate.variableList
+    editedVariables.value = [...versionTemplate.variableList]
+    
+    console.log(`버전 ${versionNumber} 로드됨:`, {
+      content: versionTemplate.content,
+      title: versionTemplate.title,
+      variables: versionTemplate.variableList
+    })
+  } else {
+    console.warn(`버전 ${versionNumber}의 템플릿 데이터를 찾을 수 없습니다.`)
+  }
 }
 
 // 반려 사이드바 닫기
@@ -1418,6 +1435,18 @@ watch(showVariables, (newValue) => {
 // 채팅 히스토리 변경 감지하여 자동 스크롤
 watch(chatHistory, () => {
   scrollToBottom()
+}, { deep: true })
+
+// 현재 버전의 템플릿 내용이 변경될 때마다 저장된 버전 데이터 업데이트
+watch([templateContent, templateTitle, templateVariables], () => {
+  if (currentVersion.value && versionTemplates.value[currentVersion.value]) {
+    versionTemplates.value[currentVersion.value] = {
+      content: templateContent.value,
+      title: templateTitle.value,
+      variableList: templateVariables.value
+    }
+    console.log(`버전 ${currentVersion.value} 내용 업데이트됨`)
+  }
 }, { deep: true })
 
 
