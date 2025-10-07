@@ -1871,22 +1871,9 @@ const getPreviewTemplateContent = () => {
   justify-content: space-between;
 }
 
-/* 분할선 스타일 */
-/* .split-layout::after {
-  content: '';
-  position: absolute;
-  left: calc(50% + 1rem);
-  top: 15vw;
-  bottom: 0;
-  width: 0.1rem;
-  height:60vh;
-  background: linear-gradient(180deg, transparent, #e0e0e0, transparent);
-  box-shadow: 0 0 0.5rem rgba(0, 0, 0, 0.1);
-} */
 
 /* 왼쪽 패널 (채팅 영역) - 약간 더 넓게 */
 .left-panel {
-
   width: 35%;
   height: 100%;
   padding-right: 2rem;
@@ -1900,9 +1887,7 @@ const getPreviewTemplateContent = () => {
   flex-direction: column;
   gap: 1.2rem;
   overflow: visible;
-
   padding-left: 2rem;
-  /* background-color: blue; */
 }
 
 /* 미리보기와 사이드바 컨테이너 */
@@ -2016,72 +2001,6 @@ const getPreviewTemplateContent = () => {
   transform: translateX(1rem);
 }
 
-/* 메시지 버블 */
-.message-bubble {
-  background-color: #f5f5f5;
-  padding: 1rem;
-  border-radius: 0.6rem;
-  font-size: 1rem;
-  line-height: 1.6;
-  color: #333;
-  height: 12.5rem;
-}
-
-.message-bubble p {
-  margin: 0.4rem 0;
-}
-
-/* 버전 버튼 컨테이너 */
-.version-button {
-  display: flex;
-  gap: 0.6rem;
-  justify-content: center;
-}
-
-/* 버전 버튼 기본 스타일 */
-.btn-version {
-  background-color: #666;
-  color: white;
-  border: none;
-  padding: 0.25rem 0.6rem;
-  border-radius: 0.3rem;
-  font-weight: 500;
-  cursor: pointer;
-  flex: 1;
-  max-width: 6rem;
-}
-
-/* 수정된 버전 버튼 스타일 */
-.btn-version-modified {
-  background-color: #28a745;
-  color: white;
-  border: none;
-  padding: 0.25rem 0.6rem;
-  border-radius: 0.3rem;
-  font-weight: 500;
-  cursor: pointer;
-  flex: 1;
-  max-width: 6rem;
-  transition: background-color 0.2s ease;
-}
-
-.btn-version-modified:hover {
-  background-color: #218838;
-}
-
-/* 템플릿 설명 */
-.template-description {
-  background-color: #f8f9fa;
-  padding: 1rem;
-  border-radius: 0.4rem;
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: #555;
-}
-
-.template-description p {
-  margin: 0;
-}
 
 /* ===== 채팅 관련 스타일 ===== */
 /* 통합된 채팅 컨테이너 */
@@ -2353,11 +2272,9 @@ const getPreviewTemplateContent = () => {
   gap: 0.6rem;
 }
 
-/* 공통 버튼 스타일 */
-.btn-submit,
-.btn-validate,
-.btn-reject {
-  background-color: #6c757d;
+/* 제출 버튼 스타일 */
+.btn-submit {
+  background-color: #28a745;
   color: white;
   border: none;
   padding: 0.4rem 0.8rem;
@@ -2367,11 +2284,6 @@ const getPreviewTemplateContent = () => {
   transition: background-color 0.2s ease;
   position: relative;
   min-width: 6rem;
-}
-
-/* 제출 버튼 스타일 */
-.btn-submit {
-  background-color: #28a745;
 }
 
 /* 제출 버튼 호버 효과 */
@@ -2409,52 +2321,4 @@ const getPreviewTemplateContent = () => {
 }
 
 
-/* 변수값 표시 토글 스타일 */
-.variables-toggle {
-  margin-bottom: 1rem;
-  display: flex;
-  justify-content: flex-start;
-}
-
-.toggle-label {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  font-size: 0.9rem;
-  color: #666;
-  gap: 0.5rem;
-}
-
-.toggle-label input[type="checkbox"] {
-  display: none;
-}
-
-.toggle-slider {
-  position: relative;
-  width: 3rem;
-  height: 1.5rem;
-  background-color: #ccc;
-  border-radius: 1rem;
-  transition: background-color 0.3s ease;
-}
-
-.toggle-slider::before {
-  content: '';
-  position: absolute;
-  top: 0.2rem;
-  left: 0.2rem;
-  width: 1.1rem;
-  height: 1.1rem;
-  background-color: white;
-  border-radius: 50%;
-  transition: transform 0.3s ease;
-}
-
-.toggle-label input[type="checkbox"]:checked + .toggle-slider {
-  background-color: #4caf50;
-}
-
-.toggle-label input[type="checkbox"]:checked + .toggle-slider::before {
-  transform: translateX(1.5rem);
-}
 </style>
