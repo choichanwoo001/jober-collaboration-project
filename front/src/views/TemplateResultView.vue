@@ -49,14 +49,14 @@
                   <input 
                     v-model="chatInput"
                     type="text" 
-                    :placeholder="getChatPlaceholder()"
+                    :placeholder="remainingCorrections <= 0 ? '정정 횟수가 모두 소진되었습니다.' : isGenerating ? 'AI가 응답을 생성 중입니다...' : '메시지를 입력하세요...'"
                     class="message-input"
-                    :disabled="isChatDisabled()"
+                    :disabled="remainingCorrections <= 0 || isGenerating"
                     @keyup.enter="sendMessage"
                   />
                   <button 
                     class="btn-send" 
-                    :disabled="isChatDisabled() || !chatInput.trim()"
+                    :disabled="(remainingCorrections <= 0 || isGenerating) || !chatInput.trim()"
                     @click="sendMessage"
                   >
                     ↑
@@ -82,17 +82,15 @@
               <!-- 카카오톡 미리보기 -->
               <div class="kakao-preview-wrapper" ref="kakaoPreviewRef">
                 <KakaoPreviewComponent
-                  :template-content="getPreviewTemplateContent()"
+                  :template-content="templateContent"
                   :template-title="templateTitle"
                   :show-variables="showVariables"
                   :variables="editedVariables"
                   :is-rejected="isRejected"
                   :problem-areas="problemAreas"
-                  :rejected-variables="rejectedVariables"
                   :highlighted-problem-area="currentProblemArea"
                   :modified-areas="Array.from(modifiedAreas)"
                   @problem-area-click="handleProblemAreaClick"
-                  @update-variables="updateVariables"
                   @submit-template="handlePrimary"
                 />
               </div>
@@ -107,7 +105,6 @@
                   :validation-stage="validationStage"
                   :total-errors="totalErrors"
                   :total-warnings="totalWarnings"
-                  :alimtalk-height="alimtalkHeight"
                   @close="closeRejectionSidebar"
                   @problem-area-click="handleProblemAreaClick"
                   @apply-alternative="applyAlternativeToTemplate"
@@ -157,7 +154,6 @@ const userStore = useUserStore()
 // 컴포넌트 refs
 const chatHistoryRef = ref<HTMLElement | null>(null)
 const kakaoPreviewRef = ref<HTMLElement | null>(null)
-const alimtalkHeight = ref<number>(0)
 
 const showVariables = ref(true)
 const showRejectionSidebar = ref(false)
@@ -168,14 +164,12 @@ const problemAreas = ref<any[]>([])  // 문제 영역 목록
 const validationStage = ref<string>('') // 검증 단계 정보 추가
 const totalErrors = ref(0)
 const totalWarnings = ref(0)
-const rejectedVariables = ref<string[]>([]) // 반려된 변수 목록
 const modifiedAreas = ref<Set<string>>(new Set()) // 수정된 영역 ID 추적
 
 const templateContent = ref('')
 const templateTitle = ref('')
 const templateVariables = ref<any[]>([])
 const templateCategory = ref('')
-const templateCategoryId = ref<number | null>(null) // 백엔드에서 카테고리 이름으로 처리
 const userMessage = ref('')
 
 // 채팅 관련 변수들
@@ -259,28 +253,6 @@ const decrementModificationCount = () => {
   }
 }
 
-
-// 수정 횟수 리셋 테스트 함수들 (개발자 도구에서 사용) resetModifications() -> 10으로 리셋
-const testResetModifications = () => {
-  const key = getSessionKey()
-  sessionStorage.setItem(key, '10')
-  remainingCorrections.value = 10
-  console.log('✅ 수정 횟수를 리셋했습니다.')
-}
-
-const testSetModifications = (count: number) => {
-  const key = getSessionKey()
-  sessionStorage.setItem(key, count.toString())
-  remainingCorrections.value = count
-  console.log(`✅ 수정 횟수를 ${count}로 설정했습니다.`)
-}
-
-// 전역으로 노출 (개발자 도구에서 사용 가능)
-if (typeof window !== 'undefined') {
-  ;(window as any).resetModifications = testResetModifications
-  ;(window as any).setModifications = testSetModifications
-}
-
 // 버전 관리
 const versions = ref([
   { number: 1, template: '기본 템플릿', messageIndex: 0, templateContent: '', templateTitle: '' }
@@ -292,8 +264,59 @@ const versionTemplates = ref<Record<number, { content: string, title: string, va
 // 사용자가 수정할 수 있는 변수 값들
 const editedVariables = ref<string[]>([])
 
-// 저장된 템플릿 ID
-const savedTemplateId = ref<string | null>(null)
+// 변수 추출 함수 (공통 로직)
+const extractVariablesFromTemplate = (template: string): string[] => {
+  const patterns = [/\{\{([^}]+)\}\}/g, /#\{([^}]+)\}/g, /\{([^}]+)\}/g]
+  const found = new Set<string>()
+  patterns.forEach((re) => {
+    let m
+    while ((m = re.exec(template)) !== null) {
+      const name = (m[1] || '').trim()
+      if (name) found.add(name)
+    }
+  })
+  return Array.from(found)
+}
+
+// 변수 배열 보정 함수 (공통 로직)
+const ensureValidVariables = (): string[] => {
+  if (!editedVariables.value || editedVariables.value.length === 0) {
+    const fallback: string[] = []
+    if (Array.isArray(templateVariables.value) && templateVariables.value.length > 0) {
+      fallback.push(...templateVariables.value)
+    } else if (templateContent.value) {
+      fallback.push(...extractVariablesFromTemplate(templateContent.value))
+    }
+    editedVariables.value = fallback
+    return fallback
+  }
+  return editedVariables.value
+}
+
+// 공통 오류 처리 함수들
+const showErrorAlert = (message: string) => {
+  setTimeout(() => {
+    alert(message)
+  }, 100)
+}
+
+const restoreModificationCount = () => {
+  const key = getSessionKey()
+  const currentCount = remainingCorrections.value
+  const restoredCount = Math.min(maxCorrections, currentCount + 1)
+  sessionStorage.setItem(key, restoredCount.toString())
+  remainingCorrections.value = restoredCount
+}
+
+const addErrorMessage = (message: string, timeString: string) => {
+  const errorMessage = {
+    type: 'bot',
+    content: message,
+    time: timeString
+  }
+  chatHistory.value.push(errorMessage)
+  scrollToBottom()
+}
 
 // 컴포넌트 마운트 시 생성된 템플릿 데이터 로드
 onMounted(() => {
@@ -309,8 +332,6 @@ onMounted(() => {
       templateTitle.value = generatedTemplate.templateTitle || ''
       templateVariables.value = generatedTemplate.variables
       templateCategory.value = generatedTemplate.category
-      // templateCategoryId는 백엔드에서 카테고리 이름으로 처리되므로 null로 설정
-      templateCategoryId.value = null
       userMessage.value = generatedTemplate.userMessage
       
       // 변수명 초기화
@@ -342,8 +363,6 @@ onMounted(() => {
       
       console.log('생성된 템플릿 로드됨:', generatedTemplate)
       
-      // 템플릿 로드 후 알림톡 높이 측정
-      measureAlimtalkHeight()
     } catch (error) {
       console.error('템플릿 데이터 파싱 실패:', error)
       router.push('/')
@@ -598,19 +617,10 @@ const tryContextAnchorSystem = (problemArea: any, modifiedText: string): { succe
   const template = templateContent.value
   const originalText = problemArea.problem_text
   
-  // 1. 문맥 기반 매칭 시도
-  if (problemArea.search_methods) {
-    const contextResult = tryContextBasedMatching(problemArea, modifiedText)
-    if (contextResult.success) {
-      return contextResult
-    }
-  }
-  
-  // 2. 정확한 텍스트 매칭 시도
-  if (template.includes(originalText)) {
-    console.log('정확한 텍스트 매칭 성공')
-    const newTemplate = template.replace(originalText, modifiedText)
-    return { success: true, template: newTemplate }
+  // 1. 통합된 텍스트 매칭 시도
+  const textResult = tryTextMatching(problemArea, modifiedText)
+  if (textResult.success) {
+    return textResult
   }
   
   
@@ -618,35 +628,42 @@ const tryContextAnchorSystem = (problemArea: any, modifiedText: string): { succe
   return { success: false, template: template }
 }
 
-// 문맥 기반 매칭
-const tryContextBasedMatching = (problemArea: any, modifiedText: string): { success: boolean, template: string } => {
-  console.log('=== 문맥 기반 매칭 시도 ===')
+// 통합된 텍스트 매칭 함수
+const tryTextMatching = (problemArea: any, modifiedText: string): { success: boolean, template: string } => {
+  console.log('=== 텍스트 매칭 시도 ===')
   
   const template = templateContent.value
   const searchMethods = problemArea.search_methods
+  const originalText = problemArea.problem_text
   
-  if (!searchMethods) {
-    return { success: false, template: template }
-  }
-  
-  const exactText = searchMethods.exact_text
-  const contextBefore = searchMethods.context_before || ''
-  const contextAfter = searchMethods.context_after || ''
-  
-  // 1. 문맥 + 정확한 텍스트 매칭
-  if (exactText && (contextBefore || contextAfter)) {
-    const fullPattern = contextBefore + exactText + contextAfter
-    if (template.includes(fullPattern)) {
-      console.log('문맥 + 정확한 텍스트 매칭 성공')
-      const newTemplate = template.replace(fullPattern, contextBefore + modifiedText + contextAfter)
+  // 1. 문맥 기반 매칭 시도
+  if (searchMethods) {
+    const exactText = searchMethods.exact_text
+    const contextBefore = searchMethods.context_before || ''
+    const contextAfter = searchMethods.context_after || ''
+    
+    // 문맥 + 정확한 텍스트 매칭
+    if (exactText && (contextBefore || contextAfter)) {
+      const fullPattern = contextBefore + exactText + contextAfter
+      if (template.includes(fullPattern)) {
+        console.log('문맥 + 정확한 텍스트 매칭 성공')
+        const newTemplate = template.replace(fullPattern, contextBefore + modifiedText + contextAfter)
+        return { success: true, template: newTemplate }
+      }
+    }
+    
+    // 정확한 텍스트만 매칭
+    if (exactText && template.includes(exactText)) {
+      console.log('정확한 텍스트 매칭 성공')
+      const newTemplate = template.replace(exactText, modifiedText)
       return { success: true, template: newTemplate }
     }
   }
   
-  // 2. 정확한 텍스트만 매칭
-  if (exactText && template.includes(exactText)) {
-    console.log('정확한 텍스트 매칭 성공')
-    const newTemplate = template.replace(exactText, modifiedText)
+  // 2. 원본 텍스트 직접 매칭
+  if (originalText && template.includes(originalText)) {
+    console.log('원본 텍스트 직접 매칭 성공')
+    const newTemplate = template.replace(originalText, modifiedText)
     return { success: true, template: newTemplate }
   }
   
@@ -1249,58 +1266,45 @@ const removeAllMarkers = (): string => {
 // 중복 로직 제거로 인해 이 함수는 더 이상 사용되지 않음
 
 
-// 문맥 기반 위치 찾기
-const findContextBasedPosition = (problemArea: any): { start: number, end: number } | null => {
+// 통합된 위치 찾기 함수
+const findPosition = (problemArea: any): { start: number, end: number } | null => {
+  console.log('=== 위치 찾기 시작 ===')
+  
   const template = templateContent.value
   const searchMethods = problemArea.search_methods
   
-  if (!searchMethods) return null
-  
-  const exactText = searchMethods.exact_text
-  const contextBefore = searchMethods.context_before || ''
-  const contextAfter = searchMethods.context_after || ''
-  
-  // 문맥 + 정확한 텍스트로 위치 찾기
-  if (exactText && (contextBefore || contextAfter)) {
-    const fullPattern = contextBefore + exactText + contextAfter
-    const matchIndex = template.indexOf(fullPattern)
-    if (matchIndex !== -1) {
-      const start = matchIndex + contextBefore.length
-      const end = start + exactText.length
-      console.log('문맥 기반 위치 찾기 성공:', { start, end })
-      return { start, end }
-    }
-  }
-  
-  // 정확한 텍스트만으로 위치 찾기
-  if (exactText) {
-    const matchIndex = template.indexOf(exactText)
-    if (matchIndex !== -1) {
-      const start = matchIndex
-      const end = matchIndex + exactText.length
-      console.log('정확한 텍스트 위치 찾기 성공:', { start, end })
-      return { start, end }
-    }
-  }
-  
-  return null
-}
-
-// 안정적인 위치 찾기 (다중 수정을 위한 백업 함수)
-const findStablePosition = (problemArea: any): { start: number, end: number } | null => {
-  console.log('=== 안정적인 위치 찾기 시작 ===')
-  
   // 1. 문맥 기반 위치 찾기 시도
-  const contextPosition = findContextBasedPosition(problemArea)
-  if (contextPosition) {
-    console.log('문맥 기반 위치 찾기 성공')
-    return contextPosition
+  if (searchMethods) {
+    const exactText = searchMethods.exact_text
+    const contextBefore = searchMethods.context_before || ''
+    const contextAfter = searchMethods.context_after || ''
+    
+    // 문맥 + 정확한 텍스트로 위치 찾기
+    if (exactText && (contextBefore || contextAfter)) {
+      const fullPattern = contextBefore + exactText + contextAfter
+      const matchIndex = template.indexOf(fullPattern)
+      if (matchIndex !== -1) {
+        const start = matchIndex + contextBefore.length
+        const end = start + exactText.length
+        console.log('문맥 기반 위치 찾기 성공:', { start, end })
+        return { start, end }
+      }
+    }
+    
+    // 정확한 텍스트만으로 위치 찾기
+    if (exactText) {
+      const matchIndex = template.indexOf(exactText)
+      if (matchIndex !== -1) {
+        const start = matchIndex
+        const end = matchIndex + exactText.length
+        console.log('정확한 텍스트 위치 찾기 성공:', { start, end })
+        return { start, end }
+      }
+    }
   }
   
   // 2. 문제 텍스트 직접 매칭 시도
-  const template = templateContent.value
   const problemText = problemArea.problem_text
-  
   if (problemText && template.includes(problemText)) {
     const matchIndex = template.indexOf(problemText)
     const start = matchIndex
@@ -1341,7 +1345,7 @@ const updateMarkerForMultipleEdits = (problemArea: any, modifiedText: string): b
   
 
   // 새 마커 생성
-  const position = findStablePosition(problemArea)
+  const position = findPosition(problemArea)
   if (position) {
     console.log('새 마커 생성')
     const beforeText = template.substring(0, position.start)
@@ -1387,41 +1391,8 @@ const closeRejectionSidebar = () => {
   totalWarnings.value = 0
 }
 
-// 변수 업데이트
-const updateVariables = (newVariables: any) => {
-  editedVariables.value = Array.isArray(newVariables) ? newVariables : [...newVariables]
-  
-  // 강제로 리렌더링을 위해 nextTick 사용
-  nextTick(() => {
-    // 변수 업데이트 완료
-  })
-}
 
-// 채팅 비활성화 조건 확인
-const isChatDisabled = () => {
-  return remainingCorrections.value <= 0 || isGenerating.value
-}
 
-// 채팅 placeholder 텍스트 결정
-const getChatPlaceholder = () => {
-  if (remainingCorrections.value <= 0) {
-    return '정정 횟수가 모두 소진되었습니다.'
-  } else if (isGenerating.value) {
-    return 'AI가 응답을 생성 중입니다...'
-  } else {
-    return '메시지를 입력하세요...'
-  }
-}
-
-// 알림톡 높이 측정 함수
-const measureAlimtalkHeight = () => {
-  nextTick(() => {
-    if (kakaoPreviewRef.value) {
-      alimtalkHeight.value = kakaoPreviewRef.value.offsetHeight
-      console.log('알림톡 높이 측정:', alimtalkHeight.value)
-    }
-  })
-}
 
 
 // 변수 토글 상태 변경 감지
@@ -1458,26 +1429,8 @@ const submitTemplate = async () => {
   try {
     console.log('템플릿 검증 요청 시작')
     
-    // 제출 전 변수 배열 보정: 비어있으면 현재 템플릿 변수로 기본값 구성
-    if (!editedVariables.value || editedVariables.value.length === 0) {
-      const fallback: string[] = []
-      if (Array.isArray(templateVariables.value) && templateVariables.value.length > 0) {
-        fallback.push(...templateVariables.value)
-      } else if (templateContent.value) {
-        // 변수 배열이 비어 있으면 템플릿 본문에서 변수 패턴을 파싱해 기본값 구성
-        const patterns = [/\{\{([^}]+)\}\}/g, /#\{([^}]+)\}/g]
-        const found = new Set<string>()
-        patterns.forEach((re) => {
-          let m
-          while ((m = re.exec(templateContent.value)) !== null) {
-            const name = (m[1] || '').trim()
-            if (name) found.add(name)
-          }
-        })
-        fallback.push(...Array.from(found))
-      }
-      editedVariables.value = fallback
-    }
+    // 제출 전 변수 배열 보정
+    ensureValidVariables()
     // 마커 제거 후 최종 템플릿 확정
     const finalTemplate = removeAllMarkers()
     
@@ -1532,25 +1485,6 @@ const submitTemplate = async () => {
       totalErrors.value = totalErrorsData
       totalWarnings.value = totalWarningsData
       
-      // 반려된 변수 추출 (변수 사용 규칙 오류가 있는 경우)
-      const rejectedVars: string[] = []
-      problemAreasData.forEach((area: any) => {
-        if (area.error_type === 'variable_usage' && area.problem_text) {
-          // 변수명 추출 (예: #{변수명} 형태)
-          const variableMatches = area.problem_text.match(/#\{([^}]+)\}/g)
-          if (variableMatches) {
-            variableMatches.forEach((match: string) => {
-              const varName = match.replace(/#\{|\}/g, '')
-              if (!rejectedVars.includes(varName)) {
-                rejectedVars.push(varName)
-              }
-            })
-          }
-        }
-      })
-      rejectedVariables.value = rejectedVars
-      
-      console.log('반려된 변수:', rejectedVars)
             // 반려 상태 설정
       isRejected.value = true
       showRejectionSidebar.value = true
@@ -1562,9 +1496,7 @@ const submitTemplate = async () => {
     }
   } catch (error) {
     console.error('템플릿 검증 실패:', error)
-    setTimeout(() => {
-      alert('템플릿 검증 중 오류가 발생했습니다. 다시 시도해주세요.')
-    }, 100)
+    showErrorAlert('템플릿 검증 중 오류가 발생했습니다. 다시 시도해주세요.')
   } finally {
     isValidating.value = false // 검증 완료
   }
@@ -1615,27 +1547,9 @@ const saveTemplate = async () => {
       }
     }
     
-    // 제출 전 변수 배열 보정: 비어있으면 현재 템플릿 변수로 기본값 구성
-    if (!editedVariables.value || editedVariables.value.length === 0) {
-      const fallback: string[] = []
-      if (Array.isArray(templateVariables.value) && templateVariables.value.length > 0) {
-        fallback.push(...templateVariables.value)
-      } else if (templateContent.value) {
-        // 변수 배열이 비어 있으면 템플릿 본문에서 변수 패턴을 파싱해 기본값 구성
-        const patterns = [/\{\{([^}]+)\}\}/g, /#\{([^}]+)\}/g, /\{([^}]+)\}/g]
-        const found = new Set<string>()
-        patterns.forEach((re) => {
-          let m
-          while ((m = re.exec(templateContent.value)) !== null) {
-            const name = (m[1] || '').trim()
-            if (name) found.add(name)
-          }
-        })
-        fallback.push(...Array.from(found))
-      }
-      console.log('변수 추출 결과:', fallback)
-      editedVariables.value = fallback
-    }
+    // 제출 전 변수 배열 보정
+    const variables = ensureValidVariables()
+    console.log('변수 추출 결과:', variables)
     
     console.log('저장 시 변수 목록:', editedVariables.value)
 
@@ -1659,7 +1573,6 @@ const saveTemplate = async () => {
     
     const templateId = saveResponse.data.templateId
     console.log('템플릿 저장 성공, 저장된 템플릿 ID:', templateId)
-    savedTemplateId.value = templateId // 저장된 템플릿 ID 저장
     
     // 저장 성공 후 검증 단계로 전환
     stage.value = 'validate'
@@ -1669,7 +1582,7 @@ const saveTemplate = async () => {
     
   } catch (error: any) {
     console.error('템플릿 저장 중 오류 발생:', error)
-    alert('템플릿 저장 중 오류가 발생했습니다. 다시 시도해주세요.')
+    showErrorAlert('템플릿 저장 중 오류가 발생했습니다. 다시 시도해주세요.')
   } finally {
     isSaving.value = false // 저장 완료
   }
@@ -1747,16 +1660,7 @@ const sendMessage = async () => {
       templateVariables.value = response.data.metadata.variablesDetected
     } else {
       // 응답 변수 비어 있으면 본문에서 파싱하여 변수 배열 생성
-      const patterns = [/\{\{([^}]+)\}\}/g, /#\{([^}]+)\}/g]
-      const found = new Set<string>()
-      patterns.forEach((re) => {
-        let m
-        while ((m = re.exec(templateContent.value)) !== null) {
-          const name = (m[1] || '').trim()
-          if (name) found.add(name)
-        }
-      })
-      templateVariables.value = Array.from(found) // 문자열 배열로 변환
+      templateVariables.value = extractVariablesFromTemplate(templateContent.value)
     }
     // 제목 업데이트 (응답에 제목이 있다면)
     if (response.data.template_title) {
@@ -1793,22 +1697,10 @@ const sendMessage = async () => {
     console.error('템플릿 수정 실패:', error)
     
     // 오류 발생 시 수정 횟수 복원
-    const key = getSessionKey()
-    const currentCount = remainingCorrections.value
-    const restoredCount = Math.min(maxCorrections, currentCount + 1)
-    sessionStorage.setItem(key, restoredCount.toString())
-    remainingCorrections.value = restoredCount
+    restoreModificationCount()
     
     // 오류 메시지 추가
-    const errorMessage = {
-      type: 'bot',
-      content: '죄송합니다. 템플릿 수정 중 오류가 발생했습니다. 다시 시도해주세요.',
-      time: timeString
-    }
-    chatHistory.value.push(errorMessage)
-    
-    // 오류 메시지 추가 후 자동 스크롤
-    scrollToBottom()
+    addErrorMessage('죄송합니다. 템플릿 수정 중 오류가 발생했습니다. 다시 시도해주세요.', timeString)
   } finally {
     isGenerating.value = false
   }
@@ -1824,15 +1716,7 @@ const scrollToBottom = () => {
   })
 }
 
-// 템플릿 내용이나 변수 변경 시 높이 재측정
-watch([templateContent, templateTitle, editedVariables, showVariables], () => {
-  measureAlimtalkHeight()
-}, { deep: true })
 
-// 미리보기용 템플릿 내용 반환
-const getPreviewTemplateContent = () => {
-  return templateContent.value
-}
 
 </script>
 
