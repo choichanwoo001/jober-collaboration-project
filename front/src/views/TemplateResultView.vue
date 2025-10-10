@@ -150,11 +150,12 @@ import { useUserStore } from '@/stores/user'
 import { 
   INTERNAL_MESSAGE_PATTERNS, 
   EXPLANATORY_TEXT_PATTERNS,
-  EXPLANATORY_KEYWORDS,
   CONTENT_PATTERNS,
   extractBulletPointAction,
   extractBulletKeywords,
-  generateRemovalPatterns
+  generateRemovalPatterns,
+  isExplanatoryText,
+  isInternalInstruction
 } from '@/constants/templateValidation'
 import { 
   createMarkerStart, 
@@ -961,19 +962,17 @@ const removeExplanatoryText = (text: string): string => {
   return cleanedText.trim()
 }
 
-// 의미있는 내용인지 판단하는 함수
+// 의미있는 내용인지 판단하는 함수 (완전 패턴 기반)
 const isMeaningfulContent = (text: string): boolean => {
   if (!text || text.length < 2) return false
   
   // 특수문자만 있는 경우 제외
   if (/^[^\w가-힣]*$/.test(text)) return false
   
-  // 설명형 키워드가 포함된 경우 제외 (더 강화)
-  const hasExplanatoryKeyword = EXPLANATORY_KEYWORDS.some(keyword => 
-    text.includes(keyword)
-  )
-  
-  if (hasExplanatoryKeyword) return false
+  // 설명형 텍스트나 내부 지시사항인 경우 제외 (패턴 기반)
+  if (isExplanatoryText(text) || isInternalInstruction(text)) {
+    return false
+  }
   
   // 실제 내용 패턴이 포함된 경우 유효
   const hasContentPattern = CONTENT_PATTERNS.some(pattern => 
