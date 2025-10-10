@@ -356,94 +356,147 @@ export function isExplanatoryText(text: string): boolean {
 }
 
 // ============================================
-// 실제 콘텐츠 감지 패턴 (범용)
+// 실제 콘텐츠 감지 패턴 (완전 범용)
 // ============================================
 
 /**
- * 실제 고객용 콘텐츠에 나타나는 특징들
- * 특정 내용이 아닌 "유형"을 정의
+ * 언어 구조 기반 콘텐츠 판별 패턴
+ * 특정 도메인이나 키워드에 의존하지 않음
  */
-export const CONTENT_CHARACTERISTICS = {
-  // 고객 대면 호칭 (2인칭)
-  customerAddressing: [
-    /(?:고객|회원)님/,
-    /안녕하세요/,
-    /감사합니다/,
-    /방문해\s*주셔서/,
-    /이용해\s*주셔서/
-  ],
-  
-  // 상품/서비스 설명
-  productDescription: [
-    /(?:상품|제품|서비스|브랜드)/,
-    /(?:할인|쿠폰|포인트|혜택)/,
-    /(?:행사|이벤트|프로모션)/,
-    /(?:신상품|신제품|신규)/,
-    /(?:인기|베스트|추천)/
-  ],
-  
-  // 설명/형용 표현 (일반적 마케팅 용어)
-  descriptive: [
-    /(?:특별한|다양한|풍부한|새로운)/,
-    /(?:최고의|최상의|프리미엄|고급)/,
-    /(?:합리적|저렴한|경제적)/,
-    /(?:편리한|간편한|쉬운)/
-  ],
-  
-  // 행동 유도 (CTA)
-  callToAction: [
-    /지금\s*(?:확인|신청|구매|예약)/,
-    /(?:클릭|방문|문의)해\s*주세요/,
-    /서둘러\s*주세요/,
-    /놓치지\s*마세요/
-  ],
-  
-  // 구체적 정보 제공
-  specificInfo: [
-    /\d+%/,                    // 퍼센트 (할인율 등)
-    /\d+원/,                   // 가격
-    /\d+월\s*\d+일/,          // 날짜
-    /\d+:\d+/,                 // 시간
-    /[\d-]+/,                  // 전화번호 패턴
-    /[가-힣]+(?:점|지점|매장)/ // 장소
-  ]
-} as const
+
+/**
+ * 존댓말/경어 패턴 (도메인 무관)
+ */
+export const POLITE_LANGUAGE_PATTERNS = [
+  // 존댓말 어미
+  /습니다$/,
+  /십니다$/,
+  /세요$/,
+  /셨습니까$/,
+  /하십시오$/,
+  /하시기\s*바랍니다$/,
+  /[가-힣]+니다$/,
+  // 존칭 표현
+  /님/,
+  /귀하/,
+  /[가-힣]+분께서/,
+  /[가-힣]+분들/,
+  // 정중한 표현
+  /감사(?:합니다|드립니다|인사)/,
+  /안녕하세요/,
+  /부탁드립니다/,
+  /문의(?:해\s*)?주[시세]/
+]
+
+/**
+ * 2인칭 직접 호칭 패턴 (고객 대면 언어)
+ */
+export const DIRECT_ADDRESS_PATTERNS = [
+  /(?:여러분|당신)/,
+  /주[시세](?:면|기를|오|고)/,  // "주시면", "주세요", "주시고"
+  /[가-힣]+해\s*주[시세]/,      // "이용해 주세요", "방문해 주십시오"
+  /[가-힣]+하시(?:면|기를|오|고)/,
+  /받으시/,
+  /이용하시/,
+  /선택하시/
+]
+
+/**
+ * 구체적 정보 패턴 (숫자, 날짜, 시간 등)
+ */
+export const CONCRETE_INFO_PATTERNS = [
+  /\d+[%원달러유로엔]/,        // 숫자 + 단위
+  /\d{4}[-./년]\d{1,2}[-./월]\d{1,2}일?/, // 날짜
+  /\d{1,2}:\d{2}/,              // 시간
+  /\d{2,4}[-\s]\d{3,4}[-\s]\d{4}/, // 전화번호
+  /[가-힣]+(?:\d+)?(?:점|지점|매장|호점|층|호)/, // 장소
+  /\d+(?:개|명|회|일|시간|분|초|건|번|차)/, // 수량 단위
+]
+
+/**
+ * 3인칭/메타 언급 패턴 (내부 지시사항 특징)
+ */
+export const THIRD_PERSON_META_PATTERNS = [
+  /(?:고객|사용자|수신자|방문자)[이가을를]/,
+  /(?:메시지|텍스트|내용|문구|표현)[이가을를은는]/,
+  /(?:템플릿|화면|페이지|미리보기)[에서는을를]/,
+  /(?:이|저|그)\s*(?:부분|내용|텍스트|메시지)/
+]
+
+/**
+ * 명령형/지시형 패턴 (내부 작업 지시 특징)
+ */
+export const IMPERATIVE_INSTRUCTION_PATTERNS = [
+  /[가-힣]+[를을]\s*(?:삭제|제거|변경|수정|교체|대체)(?:하고|합니다|해야|하세요)/,
+  /[가-힣]+로\s*(?:변경|수정|교체)(?:합니다|해야|하세요)/,
+  /(?:다음|아래|위)와\s*같이/,
+  /(?:예를\s*들어|예시로|예컨대)/,
+  /(?:먼저|그다음|마지막으로|최종적으로)/
+]
 
 /**
  * 실제 콘텐츠 패턴 통합 배열
  */
 export const CONTENT_PATTERNS = [
-  ...CONTENT_CHARACTERISTICS.customerAddressing,
-  ...CONTENT_CHARACTERISTICS.productDescription,
-  ...CONTENT_CHARACTERISTICS.descriptive,
-  ...CONTENT_CHARACTERISTICS.callToAction,
-  ...CONTENT_CHARACTERISTICS.specificInfo
+  ...POLITE_LANGUAGE_PATTERNS,
+  ...DIRECT_ADDRESS_PATTERNS,
+  ...CONCRETE_INFO_PATTERNS
 ]
 
 /**
- * 텍스트가 실제 고객용 콘텐츠인지 판별
+ * 텍스트가 실제 고객용 콘텐츠인지 판별 (완전 범용)
  * @param text - 검사할 텍스트
  * @returns boolean - 실제 콘텐츠면 true
  */
 export function isActualContent(text: string): boolean {
-  let matchCount = 0
-  
-  // 여러 카테고리에서 매치되면 콘텐츠일 가능성 높음
-  for (const patterns of Object.values(CONTENT_CHARACTERISTICS)) {
-    for (const pattern of patterns) {
-      if (pattern.test(text)) {
-        matchCount++
-        if (matchCount >= 2) return true // 2개 이상 매치되면 콘텐츠로 판단
-      }
-    }
+  // 텍스트가 너무 짧으면 판별 불가
+  if (!text || text.trim().length < 3) {
+    return false
   }
   
-  // 내부 지시사항이나 설명형 텍스트가 아니면서 어느 정도 길이가 있으면 콘텐츠
-  if (!isInternalInstruction(text) && !isExplanatoryText(text) && text.length > 10) {
-    return true
+  let contentScore = 0
+  let nonContentScore = 0
+  
+  // 1. 존댓말/경어 체크 (고객 대면 언어)
+  const hasPoliteLanguage = POLITE_LANGUAGE_PATTERNS.some(pattern => pattern.test(text))
+  if (hasPoliteLanguage) contentScore += 2
+  
+  // 2. 2인칭 직접 호칭 체크 (고객에게 직접 말하기)
+  const hasDirectAddress = DIRECT_ADDRESS_PATTERNS.some(pattern => pattern.test(text))
+  if (hasDirectAddress) contentScore += 2
+  
+  // 3. 구체적 정보 체크 (실제 정보 제공)
+  const hasConcreteInfo = CONCRETE_INFO_PATTERNS.some(pattern => pattern.test(text))
+  if (hasConcreteInfo) contentScore += 1
+  
+  // 4. 3인칭/메타 언급 체크 (내부 지시사항 특징)
+  const hasThirdPersonMeta = THIRD_PERSON_META_PATTERNS.some(pattern => pattern.test(text))
+  if (hasThirdPersonMeta) nonContentScore += 2
+  
+  // 5. 명령형/지시형 체크 (내부 작업 지시)
+  const hasImperativeInstruction = IMPERATIVE_INSTRUCTION_PATTERNS.some(pattern => pattern.test(text))
+  if (hasImperativeInstruction) nonContentScore += 2
+  
+  // 6. 내부 지시사항이나 설명형 텍스트 체크
+  if (isInternalInstruction(text)) nonContentScore += 3
+  if (isExplanatoryText(text)) nonContentScore += 2
+  
+  // 7. 문장 길이 체크 (너무 짧으면 내부 지시일 가능성)
+  const sentenceLength = text.length
+  if (sentenceLength < 10) {
+    nonContentScore += 1
+  } else if (sentenceLength > 20) {
+    contentScore += 1
   }
   
-  return false
+  // 8. 문장 부호 체크 (완결된 문장인지)
+  const hasProperEnding = /[.!?。]$/.test(text.trim())
+  if (hasProperEnding) contentScore += 1
+  
+  console.log(`콘텐츠 판별: "${text.substring(0, 30)}..." - 콘텐츠 점수: ${contentScore}, 비콘텐츠 점수: ${nonContentScore}`)
+  
+  // 최종 판별: 콘텐츠 점수가 비콘텐츠 점수보다 높으면 실제 콘텐츠
+  return contentScore > nonContentScore
 }
 
 // ============================================
@@ -477,4 +530,63 @@ export function extractBulletPointAction(text: string):
   
   return null
 }
+
+// ============================================
+// 불릿 포인트 범용 처리 (완전 동적)
+// ============================================
+
+/**
+ * 불릿 포인트 관련 작업 추출 및 처리
+ * 특정 주제에 국한되지 않고 모든 불릿 포인트를 동적으로 처리
+ */
+
+/**
+ * 텍스트에서 불릿 포인트 관련 키워드 추출
+ * @param text - 분석할 텍스트
+ * @returns 추출된 키워드 배열
+ */
+export function extractBulletKeywords(text: string): string[] {
+  const keywords: string[] = []
+  
+  // "• 키워드:" 형태 추출
+  const bulletPattern = /•\s*([^:：\n]+)[：:]/g
+  let match
+  while ((match = bulletPattern.exec(text)) !== null) {
+    if (match[1]) {
+      keywords.push(match[1].trim())
+    }
+  }
+  
+  // 일반적인 주제 키워드 추출 (동작 동사와 함께 나오는 경우)
+  const subjectPattern = /([가-힣]+)[를을이가는은]\s*(?:삭제|제거|변경|수정|추가|강조)/g
+  while ((match = subjectPattern.exec(text)) !== null) {
+    if (match[1] && match[1].length >= 2) {
+      keywords.push(match[1].trim())
+    }
+  }
+  
+  // COMMON_SUBJECTS에서 매칭되는 것 추가
+  for (const subject of COMMON_SUBJECTS) {
+    if (text.includes(subject)) {
+      keywords.push(subject)
+    }
+  }
+  
+  // 중복 제거
+  return Array.from(new Set(keywords))
+}
+
+/**
+ * 통합 설명형 키워드 배열 (레거시 호환)
+ */
+export const EXPLANATORY_KEYWORDS = [
+  // 내부 지시사항 키워드
+  ...INTERNAL_INSTRUCTION_KEYWORDS,
+  // 작업 동사
+  ...ACTION_VERBS,
+  // 메타 키워드
+  ...META_KEYWORDS,
+  // 설명형 접속사
+  ...EXPLANATORY_CONNECTIVES
+] as const
 

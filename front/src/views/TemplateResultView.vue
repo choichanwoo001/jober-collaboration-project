@@ -148,11 +148,13 @@ import RejectionSidebarComponent from '@/components/RejectionSidebarComponent.vu
 import { templateApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 import { 
-  BULLET_POINT_TYPES, 
   INTERNAL_MESSAGE_PATTERNS, 
   EXPLANATORY_TEXT_PATTERNS,
   EXPLANATORY_KEYWORDS,
-  CONTENT_PATTERNS
+  CONTENT_PATTERNS,
+  extractBulletPointAction,
+  extractBulletKeywords,
+  generateRemovalPatterns
 } from '@/constants/templateValidation'
 import { 
   createMarkerStart, 
@@ -773,7 +775,7 @@ const extractModifiedTextFromAlternative = (alternativeText: string): string | n
   return alternativeText.trim()
 }
 
-// 범용적인 불릿 포인트 삭제 함수
+// 범용적인 불릿 포인트 삭제 함수 (완전 동적)
 const removeBulletPoint = (bulletType: string, problemArea: any): boolean => {
   console.log(`=== ${bulletType} 불릿 포인트 삭제 시작 ===`)
   console.log('문제 영역:', problemArea)
@@ -784,10 +786,20 @@ const removeBulletPoint = (bulletType: string, problemArea: any): boolean => {
   console.log('현재 템플릿:', template)
   console.log('문제 텍스트:', problemText)
   
-  // 불릿 포인트 타입별 키워드 가져오기
-  const bulletConfig = BULLET_POINT_TYPES[bulletType as keyof typeof BULLET_POINT_TYPES]
-  const keywords = bulletConfig ? bulletConfig.keywords : [bulletType.toLowerCase()]
-  console.log(`${bulletType} 키워드:`, keywords)
+  // 1. 문제 텍스트에서 키워드 동적 추출
+  let keywords: string[] = []
+  if (problemText) {
+    keywords = extractBulletKeywords(problemText)
+    console.log('문제 텍스트에서 추출된 키워드:', keywords)
+  }
+  
+  // 2. bulletType도 키워드로 추가 (소문자로 변환)
+  const typeKeyword = bulletType.toLowerCase()
+  if (!keywords.includes(typeKeyword)) {
+    keywords.push(typeKeyword)
+  }
+  
+  console.log(`최종 키워드 목록:`, keywords)
   
   // 1. 키워드별 불릿 포인트 패턴들 생성
   const bulletPatterns = keywords.map((keyword: string) => [
@@ -854,50 +866,58 @@ const removeBulletPoint = (bulletType: string, problemArea: any): boolean => {
   return false
 }
 
-// 범용적인 불릿 포인트 대안 처리
+// 범용적인 불릿 포인트 대안 처리 (완전 동적)
 const handleBulletPointAlternative = (text: string): string | null => {
   console.log('=== 범용 불릿 포인트 대안 처리 시작 ===')
   console.log('입력 텍스트:', text)
   
-  // 각 불릿 포인트 타입별로 처리
-  for (const [type, config] of Object.entries(BULLET_POINT_TYPES)) {
-    console.log(`${type} 타입 처리 시도`)
+  // 1. 텍스트에서 키워드 추출
+  const keywords = extractBulletKeywords(text)
+  if (keywords.length === 0) {
+    console.log('키워드를 찾을 수 없음')
+    return null
+  }
+  
+  console.log('추출된 키워드:', keywords)
+  
+  // 2. 각 키워드에 대해 동작 추출 시도
+  for (const keyword of keywords) {
+    const action = extractBulletPointAction(text)
     
-    // 키워드가 포함되어 있는지 확인
-    const hasKeyword = config.keywords.some(keyword => 
-      text.toLowerCase().includes(keyword.toLowerCase())
-    )
-    
-    if (!hasKeyword) {
-      continue
-    }
-    
-    console.log(`${type} 키워드 발견`)
-    
-    // 제거 지시 확인
-    const hasRemoveInstruction = config.removePatterns.some(pattern => pattern.test(text))
-    if (hasRemoveInstruction) {
-      console.log(`${type} 제거 지시 감지됨`)
-      return `REMOVE_${type.toUpperCase()}_BULLET`
-    }
-    
-    // 수정 지시 확인
-    const hasModifyInstruction = config.modifyPatterns.some(pattern => pattern.test(text))
-    if (hasModifyInstruction) {
-      console.log(`${type} 수정 지시 감지됨`)
-      return config.defaultModify
-    }
-    
-    // 특정 내용 추출 시도
-    for (const keyword of config.keywords) {
-      const pattern = new RegExp(`${keyword}[:\s]*([^.]*)`, 'i')
-      const match = text.match(pattern)
-      if (match && match[1]) {
-        const extractedText = match[1].trim()
-        if (extractedText && extractedText.length > 0) {
-          console.log(`${type} 관련 텍스트 추출:`, extractedText)
-          return `• ${type}: ${extractedText}`
+    if (action) {
+      console.log(`키워드 "${keyword}"에 대한 동작:`, action)
+      
+      // 제거 동작
+      if (action.action === 'remove') {
+        console.log(`${action.subject} 제거 지시 감지됨`)
+        return `REMOVE_${action.subject.toUpperCase()}_BULLET`
+      }
+      
+      // 수정 동작
+      if (action.action === 'modify') {
+        console.log(`${action.subject} 수정 지시 감지됨`)
+        // 구체적인 내용이 있는지 추출 시도
+        const contentPattern = new RegExp(`${action.subject}[:\\s]*["']?([^"'.\\n]+)["']?`, 'i')
+        const match = text.match(contentPattern)
+        if (match && match[1]) {
+          const extractedContent = match[1].trim()
+          if (extractedContent.length > 0) {
+            return `• ${action.subject}: ${extractedContent}`
+          }
         }
+        return `• ${action.subject}`
+      }
+    }
+    
+    // 3. 동작을 명시적으로 추출하지 못한 경우, 패턴 기반으로 시도
+    // "키워드: 내용" 형태 추출
+    const contentPattern = new RegExp(`${keyword}[:\\s]*([^.\\n]+)`, 'i')
+    const match = text.match(contentPattern)
+    if (match && match[1]) {
+      const extractedText = match[1].trim()
+      if (extractedText && extractedText.length > 2) {
+        console.log(`키워드 "${keyword}" 관련 텍스트 추출:`, extractedText)
+        return `• ${keyword}: ${extractedText}`
       }
     }
   }
