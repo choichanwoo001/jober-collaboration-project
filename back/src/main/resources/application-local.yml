@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: final-project-backend
+
+  # 데이터베이스 설정
+  datasource:
+    url: jdbc:mysql://localhost:3306/final_project
+    username: root
+    password: 1234
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # flyway 마이그레이션 설정
+  flyway:
+    enabled: false
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations:
+      - classpath:db/migration
+      - classpath:db/seed
+
+  # JPA 설정
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
+
+  # Redis 설정
+  data:
+    redis:
+      host: 127.0.0.1           # Docker 컨테이너가 바인딩된 로컬 IP
+      port: 6379
+      password: 1234            # Redis 컨테이너 생성 시 설정한 비밀번호
+      database: 0
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+# JWT 설정
+jwt:
+  secret: 'your-very-secret-key-for-local-development-12345' # 고정된 시크릿 키
+  access-expiration: 3600000     # 1시간 (ms)
+  refresh-expiration: 604800000  # 7일 (ms)
+
+# 서버 설정
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+# 로깅 설정
+logging:
+  level:
+    com.example: DEBUG
+    org.springframework.security: DEBUG
+
+
+# AI 서버 (로컬 IP로 직접 접근)
+ai:
+  fastapi:
+    url: http://localhost:8000 #로컬 AI 서버 URL
