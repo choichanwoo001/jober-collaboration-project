@@ -68,13 +68,13 @@ const formattedTemplateContent = computed(() => {
   // 1) 기본 템플릿
   if (!props.templateContent) {
     const defaultContent = `
-안녕하세요, #{고객명}님.
+안녕하세요, {{고객명}}님.
 
-#{서비스명} 이용과 관련하여 안내드립니다.
+{{서비스명}} 이용과 관련하여 안내드립니다.
 
-• 처리일시: #{처리일시}
-• 처리상태: #{처리상태}
-• 담당자: #{담당자명}
+• 처리일시: {{처리일시}}
+• 처리상태: {{처리상태}}
+• 담당자: {{담당자명}}
 
 문의사항이 있으신 경우 고객센터로 연락 부탁드립니다.
 
@@ -102,36 +102,30 @@ const formattedTemplateContent = computed(() => {
   
 
 
-  // 3) 변수 처리 (showVariables prop에 따라)
+  // 3) 변수 처리 - 변수 영역으로 인식하되 원본 내용 보존
   console.log('=== 변수 처리 시작 ===')
   console.log('showVariables:', props.showVariables)
   console.log('variableMapping:', props.variableMapping)
   
+  // 변수 패턴: {{변수}} 형태만 사용
+  const doubleBracePattern = /\{\{([^}]+)\}\}/g  // {{변수}} 형태
+  
   if (props.showVariables) {
-    // 변수를 하이라이트로 표시 - {{변수}} 형태만 인식
-    const pattern = /\{\{([^}]+)\}\}/g
-    
+    // 변수를 하이라이트로 표시하되 원본 내용 보존
     console.log('하이라이트 패턴 적용: {{변수}}')
-    content = content.replace(pattern, (match, varName) => {
+    
+    // {{변수}} 형태 처리
+    content = content.replace(doubleBracePattern, (match, varName) => {
       const variableName = varName.trim()
-      console.log(`변수 하이라이트: "${variableName}"`)
+      console.log(`변수 하이라이트: "{{${variableName}}}"`)
+      // 원본 내용({{변수}})을 그대로 보여주되 하이라이트만 적용
       return `<span class="variable-highlight" data-variable="${variableName}">{{${variableName}}}</span>`
     })
   } else {
-    // 변수를 실제 값으로 치환 - {{변수}} 형태만 인식
-    if (props.variableMapping) {
-      const pattern = /\{\{([^}]+)\}\}/g
-      
-      console.log('치환 패턴 적용: {{변수}}')
-      content = content.replace(pattern, (match, varName) => {
-        const variableName = varName.trim()
-        const actualValue = props.variableMapping?.[variableName]
-        console.log(`변수 치환: "${variableName}" → "${actualValue || match}"`)
-        return actualValue || match
-      })
-    } else {
-      console.log('variableMapping이 없어서 변수 치환을 건너뜀')
-    }
+    // 변수를 실제 값으로 치환하지 않고 원본 내용 그대로 표시 (하이라이트 없음)
+    // 변수 영역으로 인식은 하지만 원본 텍스트를 그대로 보여줌
+    console.log('변수 원본 내용 유지 (하이라이트 없음)')
+    // 변수 치환을 하지 않으므로 원본 내용이 그대로 유지됨
   }
   
   console.log('=== 변수 처리 완료 ===')

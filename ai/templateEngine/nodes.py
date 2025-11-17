@@ -23,6 +23,27 @@ from templateEngine.prompts.builders import (
 
 logger = logging.getLogger(__name__)
 
+def clean_json_response(response: str) -> str:
+    """
+    AI 응답에서 마크다운 코드 블록을 제거하고 순수 JSON만 추출합니다.
+    
+    예: ```json\n{...}\n``` -> {...}
+    """
+    if not response:
+        return response
+    
+    # 앞뒤 공백 제거
+    cleaned = response.strip()
+    
+    # 마크다운 코드 블록 시작 부분 제거 (```json 또는 ```)
+    cleaned = re.sub(r'^```(?:json)?\s*\n?', '', cleaned, flags=re.MULTILINE)
+    
+    # 마크다운 코드 블록 끝 부분 제거 (```)
+    cleaned = re.sub(r'\n?```\s*$', '', cleaned, flags=re.MULTILINE)
+    
+    # 최종 앞뒤 공백 제거
+    return cleaned.strip()
+
 # --- [신규] 파이프라인 노드들 ---
 
 async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any]:
@@ -36,7 +57,9 @@ async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any
         try:
             prompt_builder = TypePromptBuilder(state["userMessage"])
             messages = prompt_builder.build()
-            return json.loads(await state["openai_service"].chat_completion(messages))
+            response = await state["openai_service"].chat_completion(messages)
+            cleaned_response = clean_json_response(response)
+            return json.loads(cleaned_response)
         except Exception as e:
             logger.error(f"❌ (병렬) 메시지 유형 분류 실패: {e}")
             return {"type": "BASIC", "explain_type": "분류 실패"}
@@ -61,7 +84,9 @@ async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any
 
             category_builder = CategoryPromptBuilder(state["userMessage"], current_categories)
             messages = category_builder.build()
-            result = json.loads(await state["openai_service"].chat_completion(messages))
+            response = await state["openai_service"].chat_completion(messages)
+            cleaned_response = clean_json_response(response)
+            result = json.loads(cleaned_response)
 
             CONFIDENCE_THRESHOLD = 70
             if result.get("is_appropriate") and result.get("confidence", 0) >= CONFIDENCE_THRESHOLD:
@@ -69,7 +94,9 @@ async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any
             else:
                 new_category_builder = NewCategoryPromptBuilder(state["userMessage"], current_categories)
                 messages = new_category_builder.build()
-                new_category_result = json.loads(await state["openai_service"].chat_completion(messages))
+                response = await state["openai_service"].chat_completion(messages)
+                cleaned_response = clean_json_response(response)
+                new_category_result = json.loads(cleaned_response)
                 new_category_name = new_category_result.get("new_category")
                 await category_service.create_category_if_not_exists(new_category_name)
                 
@@ -138,7 +165,8 @@ async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
         
         # JSON 파싱 안전 처리
         try:
-            block_fields = json.loads(block_response)
+            cleaned_block_response = clean_json_response(block_response)
+            block_fields = json.loads(cleaned_block_response)
             logger.info(f"  ✅ 의미 블록 추출 성공: {list(block_fields.keys())}")
         except json.JSONDecodeError as e:
             logger.error(f"  ❌ 의미 블록 JSON 파싱 실패: {e}")
@@ -153,7 +181,8 @@ async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
         
         # JSON 파싱 안전 처리
         try:
-            individual_variables = json.loads(variable_response)
+            cleaned_variable_response = clean_json_response(variable_response)
+            individual_variables = json.loads(cleaned_variable_response)
             logger.info(f"  ✅ 개별 변수 추출 성공: {list(individual_variables.keys())}")
         except json.JSONDecodeError as e:
             logger.error(f"  ❌ 개별 변수 JSON 파싱 실패: {e}")

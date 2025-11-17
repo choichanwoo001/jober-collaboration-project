@@ -287,13 +287,15 @@ const extractVariablesFromTemplate = (template: string): string[] => {
   console.log('=== 변수 추출 시작 ===')
   console.log('템플릿 내용:', template)
   
-  // {{변수}} 형태만 인식하도록 통일
-  const pattern = /\{\{([^}]+)\}\}/g
+  // {{변수}} 형태만 인식
+  const doubleBracePattern = /\{\{([^}]+)\}\}/g  // {{변수}} 형태
   const found = new Set<string>()
   
   console.log('변수 추출 패턴 적용: {{변수}}')
+  
+  // {{변수}} 형태 추출
   let m
-  while ((m = pattern.exec(template)) !== null) {
+  while ((m = doubleBracePattern.exec(template)) !== null) {
     const name = (m[1] || '').trim()
     if (name) {
       found.add(name)
@@ -367,15 +369,11 @@ onMounted(() => {
       // 변수명 초기화
       editedVariables.value = [...templateVariables.value]
       
-      // 변수 매핑 자동 생성 (백엔드에서 제공하지 않은 경우)
+      // 변수 매핑은 백엔드에서만 제공 (자동 생성하지 않음)
+      // 사용자가 미리보기를 보고 직접 수정할 수 있도록 변수명을 그대로 표시
       if (!templateVariableMapping.value || Object.keys(templateVariableMapping.value).length === 0) {
-        const extractedVars = extractVariablesFromTemplate(templateContent.value)
-        const autoMapping: Record<string, string> = {}
-        extractedVars.forEach(varName => {
-          autoMapping[varName] = `[${varName}]` // 기본값으로 변수명을 대괄호로 감싸서 표시
-        })
-        templateVariableMapping.value = autoMapping
-        console.log('초기 변수 매핑 자동 생성:', autoMapping)
+        templateVariableMapping.value = {}
+        console.log('변수 매핑이 없어서 빈 객체로 설정 (백엔드에서 제공해야 함)')
       }
       
       // 버전 1에 초기 템플릿 저장
@@ -1423,14 +1421,10 @@ const sendMessage = async () => {
     if (response.data.variable_mapping) {
       templateVariableMapping.value = response.data.variable_mapping
     } else {
-      // 백엔드에서 변수 매핑이 없으면 자동 생성
-      const extractedVars = extractVariablesFromTemplate(templateContent.value)
-      const autoMapping: Record<string, string> = {}
-      extractedVars.forEach(varName => {
-        autoMapping[varName] = `[${varName}]` // 기본값으로 변수명을 대괄호로 감싸서 표시
-      })
-      templateVariableMapping.value = autoMapping
-      console.log('자동 생성된 변수 매핑:', autoMapping)
+      // 백엔드에서 변수 매핑이 없으면 빈 객체로 설정
+      // 사용자가 미리보기를 보고 직접 수정할 수 있도록 변수명을 그대로 표시
+      templateVariableMapping.value = {}
+      console.log('변수 매핑이 없어서 빈 객체로 설정 (백엔드에서 제공해야 함)')
     }
     
     // 변수 처리 - 백엔드에서 variables 필드 사용
