@@ -31,8 +31,16 @@ def convert_jdbc_to_mysql_url(jdbc_url: str) -> str:
 
 # 환경변수에서 직접 가져오기
 JDBC_URL = os.getenv("DB_URL", "")
-DATABASE_URL = convert_jdbc_to_mysql_url(JDBC_URL) if JDBC_URL else \
-    "mysql+pymysql://root:@138.2.119.75:3306/final_project?charset=utf8mb4"
+DB_USERNAME = os.getenv("DB_USERNAME", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "3306")
+DB_NAME = os.getenv("DB_NAME", "final_project")
+
+# 기본 DATABASE_URL (환경변수 없을 시 사용)
+DEFAULT_DATABASE_URL = f"mysql+pymysql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
+
+DATABASE_URL = convert_jdbc_to_mysql_url(JDBC_URL) if JDBC_URL else DEFAULT_DATABASE_URL
 
 # SQLAlchemy 설정
 engine = create_engine(

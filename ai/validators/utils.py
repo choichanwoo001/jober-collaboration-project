@@ -18,6 +18,6 @@ def extract_variables_from_template(template_content: str) -> List[str]:
     if not template_content:
         return []
     
-    # #{변수명} 패턴만 추출 (통일된 형태)
-    detected_variables = re.findall(r'#\{([^}]+)\}', template_content)
+    # {{변수명}} 패턴만 추출 (통일된 형태)
+    detected_variables = re.findall(r'\{\{([^}]+)\}\}', template_content)
     return list(set(detected_variables))

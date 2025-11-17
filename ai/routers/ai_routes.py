@@ -94,8 +94,8 @@ async def modify_template(
 
         variables = []
         
-        # 변수 추출 (#{변수명} 형태)
-        variable_pattern = r'#\{([^}]+)\}'
+        # 변수 추출 ({{변수명}} 형태)
+        variable_pattern = r'\{\{([^}]+)\}\}'
         found_variables = re.findall(variable_pattern, modified_template)
 
         for var in set(found_variables):

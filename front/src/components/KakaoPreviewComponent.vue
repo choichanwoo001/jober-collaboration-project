@@ -44,6 +44,7 @@ interface KakaoPreviewProps {
   templateTitle?: string
   showVariables: boolean
   variables: string[]
+  variableMapping?: Record<string, string>
   isRejected: boolean
   problemAreas: ProblemArea[]
   highlightedProblemArea?: ProblemArea | null
@@ -101,22 +102,39 @@ const formattedTemplateContent = computed(() => {
   
 
 
-  // 3) 변수 하이라이팅 처리 (showVariables prop에 따라)
+  // 3) 변수 처리 (showVariables prop에 따라)
+  console.log('=== 변수 처리 시작 ===')
+  console.log('showVariables:', props.showVariables)
+  console.log('variableMapping:', props.variableMapping)
+  
   if (props.showVariables) {
-    const varPatterns = [
-      /\{\{([^}]+)\}\}/g,  // {{변수}}
-      /#\{([^}]+)\}/g,      // #{변수}
-      /\{([^}]+)\}/g,       // {변수}
-      /\[([^\]]+)\]/g       // [변수] - 대괄호 형태도 변수로 처리
-    ]
-
-    varPatterns.forEach(pattern => {
+    // 변수를 하이라이트로 표시 - {{변수}} 형태만 인식
+    const pattern = /\{\{([^}]+)\}\}/g
+    
+    console.log('하이라이트 패턴 적용: {{변수}}')
+    content = content.replace(pattern, (match, varName) => {
+      const variableName = varName.trim()
+      console.log(`변수 하이라이트: "${variableName}"`)
+      return `<span class="variable-highlight" data-variable="${variableName}">{{${variableName}}}</span>`
+    })
+  } else {
+    // 변수를 실제 값으로 치환 - {{변수}} 형태만 인식
+    if (props.variableMapping) {
+      const pattern = /\{\{([^}]+)\}\}/g
+      
+      console.log('치환 패턴 적용: {{변수}}')
       content = content.replace(pattern, (match, varName) => {
         const variableName = varName.trim()
-        return `<span class="variable-highlight" data-variable="${variableName}">#{${variableName}}</span>`
+        const actualValue = props.variableMapping?.[variableName]
+        console.log(`변수 치환: "${variableName}" → "${actualValue || match}"`)
+        return actualValue || match
       })
-    })
+    } else {
+      console.log('variableMapping이 없어서 변수 치환을 건너뜀')
+    }
   }
+  
+  console.log('=== 변수 처리 완료 ===')
 
   // 4) 스마트 포맷팅 - 의미 있는 구조로 변환
   console.log('포맷팅 전 content:', content)
@@ -252,13 +270,13 @@ watch(() => props.variables, (newVariables) => {
 .kakao-preview {
   background-color: transparent;
   border-radius: 0.8rem;
-  overflow: hidden;
+  overflow: visible; /* hidden을 visible로 변경하여 스크롤 허용 */
   box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.15);
   width: 320px; /* 16글자 너비 (한글 1글자 = 20px, 공백 반칸 고려) */
 
   flex-shrink: 0;
   align-self: center;
-  max-height: none;
+  max-height: 60vh; /* 최대 높이를 뷰포트의 60%로 제한 */
   display: flex;
   flex-direction: column;
 }
@@ -270,13 +288,17 @@ watch(() => props.variables, (newVariables) => {
   display: flex;
   flex-direction: column;
   background-color: transparent;
+  min-height: 0; /* flex 아이템이 내용에 맞게 축소될 수 있도록 함 */
 }
 
 .message-bubble {
   background-color: #ffffff;
   border-radius: 0.8rem;
-  overflow: hidden;
+  overflow: visible; /* hidden을 visible로 변경 */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  max-height: 100%; /* 부모 컨테이너 높이에 맞춤 */
+  display: flex;
+  flex-direction: column;
 }
 
 .kakao-header {
@@ -299,6 +321,9 @@ watch(() => props.variables, (newVariables) => {
 .bubble-body {
   padding: 0.8rem 1rem;
   background-color: white;
+  overflow-y: auto; /* 내용이 길어질 때 스크롤 추가 */
+  flex: 1; /* 남은 공간을 모두 차지 */
+  max-height: 50vh; /* 최대 높이 설정 */
 }
 
 .message-title {
@@ -346,12 +371,15 @@ watch(() => props.variables, (newVariables) => {
 :deep(.variable-highlight) {
   background-color: #FFE066;
   color: #333333;
-  border: 1px solid #FFD700;
-  border-radius: 3px;
-  padding: 1px 3px;
-  font-weight: 500;
+  border: none; /* border 제거하여 레이아웃 영향 최소화 */
+  border-radius: 2px;
+  padding: 0; /* padding 제거하여 레이아웃 영향 최소화 */
+  margin: 0; /* margin 제거 */
+  font-weight: inherit; /* 부모와 동일한 font-weight 사용 */
+  font-size: inherit; /* 부모와 동일한 font-size 사용 */
+  line-height: inherit; /* 부모와 동일한 line-height 사용 */
   display: inline;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease; /* background-color만 transition */
 }
 
 :deep(.disclaimer) {
@@ -374,6 +402,12 @@ watch(() => props.variables, (newVariables) => {
 .kakao-content::-webkit-scrollbar-thumb { background: #94a3b1; border-radius: 0.2rem; }
 .kakao-content::-webkit-scrollbar-thumb:hover { background: #7a8896; }
 
+/* 버블 바디 스크롤바 */
+.bubble-body::-webkit-scrollbar { width: 0.4rem; }
+.bubble-body::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 0.2rem; }
+.bubble-body::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 0.2rem; }
+.bubble-body::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+
 /* 변수 스타일 */
 :deep(.variable) {
   color: #888888;
@@ -391,9 +425,7 @@ watch(() => props.variables, (newVariables) => {
 
 :deep(.variable-highlight:hover) {
   background-color: #FFD700;
-  border-color: #FFA500;
-  transform: scale(1.02);
-
+  /* transform과 border 제거하여 레이아웃 영향 없음 */
 }
 
 
@@ -401,26 +433,27 @@ watch(() => props.variables, (newVariables) => {
 :deep(.problem-highlight) {
   background-color: #fff3cd;
   color: #856404;
-  border: 2px solid #ffc107;
-  border-radius: 4px;
-  padding: 2px 4px;
-  font-weight: bold;
+  border: none; /* border 제거 */
+  border-radius: 2px;
+  padding: 0; /* padding 제거 */
+  margin: 0; /* margin 제거 */
+  font-weight: inherit; /* 부모와 동일한 font-weight */
+  font-size: inherit; /* 부모와 동일한 font-size */
+  line-height: inherit; /* 부모와 동일한 line-height */
   animation: highlight-pulse 2s infinite;
   cursor: pointer;
+  display: inline;
 }
 
 @keyframes highlight-pulse {
   0% { 
     background-color: #fff3cd;
-    border-color: #ffc107;
   }
   50% { 
     background-color: #ffeaa7;
-    border-color: #fdcb6e;
   }
   100% { 
     background-color: #fff3cd;
-    border-color: #ffc107;
   }
 }
 
@@ -428,25 +461,26 @@ watch(() => props.variables, (newVariables) => {
 :deep(.modified-highlight) {
   background-color: #d4edda;
   color: #155724;
-  border: 2px solid #28a745;
-  border-radius: 4px;
-  padding: 2px 4px;
-  font-weight: bold;
+  border: none; /* border 제거 */
+  border-radius: 2px;
+  padding: 0; /* padding 제거 */
+  margin: 0; /* margin 제거 */
+  font-weight: inherit; /* 부모와 동일한 font-weight */
+  font-size: inherit; /* 부모와 동일한 font-size */
+  line-height: inherit; /* 부모와 동일한 line-height */
   animation: modified-pulse 3s infinite;
+  display: inline;
 }
 
 @keyframes modified-pulse {
   0% { 
     background-color: #d4edda;
-    border-color: #28a745;
   }
   50% { 
     background-color: #c3e6cb;
-    border-color: #20c997;
   }
   100% { 
     background-color: #d4edda;
-    border-color: #28a745;
   }
 }
 
