@@ -52,7 +52,6 @@ class PromptDefense:
 
 
 
-
 class TemplateGenerationPromptBuilder:
     """템플릿 생성용 프롬프트 빌더"""
     def __init__(self, category: str, user_message: str, context: str = ""):
@@ -64,22 +63,22 @@ class TemplateGenerationPromptBuilder:
     def build(self) -> str:
         return f"""
 
-카테고리: {self.category}
-사용자 요청: {self.user_message}
+        카테고리: {self.category}
+        사용자 요청: {self.user_message}
 
-관련 가이드라인:
-{self.context}
+        관련 가이드라인:
+        {self.context}
 
-위 정보를 바탕으로 알림톡 템플릿을 생성해주세요. 
-템플릿에는 변수(예: #{{변수명}})를 포함하고,
-변수 목록도 함께 제공해주세요.
+        위 정보를 바탕으로 알림톡 템플릿을 생성해주세요. 
+        템플릿에는 변수(예: #{{변수명}})를 포함하고,
+        변수 목록도 함께 제공해주세요.
 
-템플릿 형식:
-- 친근하고 정중한 톤
-- 명확한 정보 전달
-- 적절한 변수 사용
-- 카카오톡 알림톡 가이드라인 준수
-"""
+        템플릿 형식:
+        - 친근하고 정중한 톤
+        - 명확한 정보 전달
+        - 적절한 변수 사용
+        - 카카오톡 알림톡 가이드라인 준수
+        """
 
 class TemplateModificationPromptBuilder:
     """템플릿 수정용 프롬프트 빌더"""

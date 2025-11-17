@@ -135,16 +135,30 @@ async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
         block_builder = FieldsPromptBuilder(generated_template)
         block_messages = block_builder.build()
         block_response = await state["openai_service"].chat_completion(block_messages)
-        block_fields = json.loads(block_response)
-        logger.info(f"  ✅ 의미 블록 추출 성공: {list(block_fields.keys())}")
+        
+        # JSON 파싱 안전 처리
+        try:
+            block_fields = json.loads(block_response)
+            logger.info(f"  ✅ 의미 블록 추출 성공: {list(block_fields.keys())}")
+        except json.JSONDecodeError as e:
+            logger.error(f"  ❌ 의미 블록 JSON 파싱 실패: {e}")
+            logger.error(f"  📝 AI 응답 내용: {block_response}")
+            block_fields = {}
 
         # --- 2단계: '개별 변수' 추출 ---
         logger.info("  - (3-2) 개별 변수 추출 중...")
         variable_builder = IndividualVariableExtractor(generated_template)
         variable_messages = variable_builder.build()
         variable_response = await state["openai_service"].chat_completion(variable_messages)
-        individual_variables = json.loads(variable_response)
-        logger.info(f"  ✅ 개별 변수 추출 성공: {list(individual_variables.keys())}")
+        
+        # JSON 파싱 안전 처리
+        try:
+            individual_variables = json.loads(variable_response)
+            logger.info(f"  ✅ 개별 변수 추출 성공: {list(individual_variables.keys())}")
+        except json.JSONDecodeError as e:
+            logger.error(f"  ❌ 개별 변수 JSON 파싱 실패: {e}")
+            logger.error(f"  📝 AI 응답 내용: {variable_response}")
+            individual_variables = {}
 
         # --- 3단계: 두 결과 병합 ---
         # individual_variables를 먼저 두고, block_fields로 덮어씁니다.
@@ -259,9 +273,18 @@ def finalize_node(state: TemplateGenerationState) -> Dict[str, Any]:
     extracted_fields = state.get("extracted_fields", {})
 
     if not base_template_text or not extracted_fields:
-        # ... (기존 예외 처리 로직) ...
-        # 이 부분은 이전 답변의 코드를 그대로 사용하시면 됩니다.
-        pass
+        logger.warning("⚠️ 템플릿 텍스트나 추출된 필드가 없습니다.")
+        return {
+            "final_result": {
+                "pipeline_success": False,
+                "template_text": base_template_text or "",
+                "variable_mapping": extracted_fields,
+                "variables": list(extracted_fields.keys()) if extracted_fields else [],
+                "template_title": state.get("generated_title", "제목 없음"),
+                "message_type": state.get("message_type_result", {}).get("type"),
+                "category_sub": state.get("category_result", {}).get("category_sub"),
+            }
+        }
 
     # --- [핵심 로직] re.sub 콜백을 이용한 안전한 동시 치환 ---
 
@@ -271,21 +294,35 @@ def finalize_node(state: TemplateGenerationState) -> Dict[str, Any]:
     valid_sorted_values = [re.escape(v) for v in sorted_values if v]
 
     if not valid_sorted_values:
-        # ... (기존 예외 처리 로직) ...
-        pass
+        logger.warning("⚠️ 유효한 치환 값이 없습니다.")
+        return {
+            "final_result": {
+                "pipeline_success": True,
+                "template_text": base_template_text,
+                "variable_mapping": extracted_fields,
+                "variables": list(extracted_fields.keys()),
+                "template_title": state.get("generated_title", "제목 없음"),
+                "message_type": state.get("message_type_result", {}).get("type"),
+                "category_sub": state.get("category_result", {}).get("category_sub"),
+            }
+        }
 
     pattern = re.compile("|".join(valid_sorted_values))
 
     # 3. 치환 로직을 수행할 콜백 함수를 정의합니다.
     def create_variable_syntax(match):
         """
-        [최종 수정] 모든 변수를 안전한 '{{...}}' 형태로 통일하여 반환합니다.
+        매칭된 값을 해당하는 변수명으로 치환합니다.
         """
         matched_value = match.group(0)
-        # key = value_to_key_map.get(matched_value) # 이제 key를 찾을 필요도 없습니다.
-
-        # 모든 매칭된 값을 예외 없이 '{{...}}' 형태로 감쌉니다.
-        return f"{{{{{matched_value}}}}}"
+        key = value_to_key_map.get(matched_value)
+        
+        if key:
+            # 매칭된 값에 해당하는 변수가 있으면 변수명으로 치환
+            return f"{{{{{key}}}}}"
+        else:
+            # 매칭된 값에 해당하는 변수가 없으면 원본 유지
+            return matched_value
 
     # 4. re.sub를 단 한 번만 호출하여 모든 치환을 안전하게 수행합니다.
     final_template_with_vars = pattern.sub(create_variable_syntax, base_template_text)
