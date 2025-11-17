@@ -287,20 +287,19 @@ const extractVariablesFromTemplate = (template: string): string[] => {
   console.log('=== 변수 추출 시작 ===')
   console.log('템플릿 내용:', template)
   
-  const patterns = [/\{\{([^}]+)\}\}/g, /#\{([^}]+)\}/g, /\{([^}]+)\}/g, /\[([^\]]+)\]/g]
+  // {{변수}} 형태만 인식하도록 통일
+  const pattern = /\{\{([^}]+)\}\}/g
   const found = new Set<string>()
   
-  patterns.forEach((re, index) => {
-    console.log(`패턴 ${index + 1} 적용:`, re)
-    let m
-    while ((m = re.exec(template)) !== null) {
-      const name = (m[1] || '').trim()
-      if (name) {
-        found.add(name)
-        console.log(`변수 발견: "${name}"`)
-      }
+  console.log('변수 추출 패턴 적용: {{변수}}')
+  let m
+  while ((m = pattern.exec(template)) !== null) {
+    const name = (m[1] || '').trim()
+    if (name) {
+      found.add(name)
+      console.log(`변수 발견: "${name}"`)
     }
-  })
+  }
   
   const result = Array.from(found)
   console.log('추출된 변수 목록:', result)

@@ -108,40 +108,26 @@ const formattedTemplateContent = computed(() => {
   console.log('variableMapping:', props.variableMapping)
   
   if (props.showVariables) {
-    // 변수를 하이라이트로 표시
-    const varPatterns = [
-      /\{\{([^}]+)\}\}/g,  // {{변수}}
-      /#\{([^}]+)\}/g,      // #{변수}
-      /\{([^}]+)\}/g,       // {변수}
-      /\[([^\]]+)\]/g       // [변수] - 대괄호 형태도 변수로 처리
-    ]
-
-    varPatterns.forEach((pattern, index) => {
-      console.log(`하이라이트 패턴 ${index + 1} 적용:`, pattern)
-      content = content.replace(pattern, (match, varName) => {
-        const variableName = varName.trim()
-        console.log(`변수 하이라이트: "${variableName}"`)
-        return `<span class="variable-highlight" data-variable="${variableName}">{${variableName}}</span>`
-      })
+    // 변수를 하이라이트로 표시 - {{변수}} 형태만 인식
+    const pattern = /\{\{([^}]+)\}\}/g
+    
+    console.log('하이라이트 패턴 적용: {{변수}}')
+    content = content.replace(pattern, (match, varName) => {
+      const variableName = varName.trim()
+      console.log(`변수 하이라이트: "${variableName}"`)
+      return `<span class="variable-highlight" data-variable="${variableName}">{{${variableName}}}</span>`
     })
   } else {
-    // 변수를 실제 값으로 치환
+    // 변수를 실제 값으로 치환 - {{변수}} 형태만 인식
     if (props.variableMapping) {
-      const varPatterns = [
-        /\{\{([^}]+)\}\}/g,  // {{변수}} - 백엔드에서 생성되는 형식
-        /#\{([^}]+)\}/g,      // #{변수} - 기존 형식
-        /\{([^}]+)\}/g,       // {변수} - 단일 중괄호
-        /\[([^\]]+)\]/g       // [변수] - 대괄호 형태도 변수로 처리
-      ]
-
-      varPatterns.forEach((pattern, index) => {
-        console.log(`치환 패턴 ${index + 1} 적용:`, pattern)
-        content = content.replace(pattern, (match, varName) => {
-          const variableName = varName.trim()
-          const actualValue = props.variableMapping?.[variableName]
-          console.log(`변수 치환: "${variableName}" → "${actualValue || match}"`)
-          return actualValue || match
-        })
+      const pattern = /\{\{([^}]+)\}\}/g
+      
+      console.log('치환 패턴 적용: {{변수}}')
+      content = content.replace(pattern, (match, varName) => {
+        const variableName = varName.trim()
+        const actualValue = props.variableMapping?.[variableName]
+        console.log(`변수 치환: "${variableName}" → "${actualValue || match}"`)
+        return actualValue || match
       })
     } else {
       console.log('variableMapping이 없어서 변수 치환을 건너뜀')
