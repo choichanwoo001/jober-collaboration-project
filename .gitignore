@@ -40,6 +40,7 @@ ai/venv_new/
 ai/.cache/
 ai/.huggingface/
 ai/chroma_db/
+ai/chromadb_check/
 
 # ai env (별도 관리)
 ai/.env
