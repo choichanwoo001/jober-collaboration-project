@@ -6,11 +6,11 @@ import com.example.dto.SignupRequest;
 import com.example.entity.Account;
 import com.example.service.AuthService;
 import com.example.service.TokenService;
+import com.example.common.annotation.RequireAuth;
+import com.example.common.annotation.CurrentUser;
 import lombok.RequiredArgsConstructor;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -25,20 +25,13 @@ public class AuthController {
 
     /**
      * 현재 인증된 사용자 정보 조회
-     * @param authentication
+     * @param currentUser
      * @return
      */
+    @RequireAuth
     @GetMapping("/me")
-    public ResponseEntity<?> getCurrentUser(Authentication authentication) {
-        // 인증되지 않은 경우 처리 
-        if(authentication == null || !authentication.isAuthenticated()) {
-            // 401 Unauthorized 응답 반환
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized");
-        }
-        
-        // 인증된 사용자는 사용자 정보 반환
-        Account account = (Account) authentication.getPrincipal();
-        return ResponseEntity.ok(Map.of("userId", account.getId()));
+    public ResponseEntity<?> getCurrentUser(@CurrentUser Account currentUser) {
+        return ResponseEntity.ok(Map.of("userId", currentUser.getId()));
     }
 
     // 회원가입

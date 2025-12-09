@@ -2,23 +2,18 @@ package com.example.controller;
 
 import com.example.dto.FastAPIResponseDto;
 import com.example.dto.TemplateRequestDto;
-import com.example.dto.TemplateSaveRequestDto;
-import com.example.dto.TemplateSaveResponseDto;
 import com.example.dto.TemplateValidationRequestDto;
 import com.example.dto.TemplateValidationResponseDto;
-import com.example.entity.Account;
 import com.example.dto.UserDto;
 import com.example.service.TemplateService;
-import com.example.service.UserService;
+import com.example.common.annotation.RequireAuth;
+import com.example.common.annotation.CurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.Map;
 
 @RestController
@@ -28,34 +23,27 @@ import java.util.Map;
 public class TemplateController {
 
     private final TemplateService templateService;
-    private final UserService userService;
 
 
     /**
      * 템플릿을 검증합니다. (POST /api/template/validate)
      */
+    @RequireAuth
     @PostMapping("/template/validate")
     public ResponseEntity<?> validateTemplate(
             @Valid @RequestBody TemplateValidationRequestDto requestDto,
-            @AuthenticationPrincipal Account currentUser
+            @CurrentUser UserDto currentUser
     ) {
         try {
             log.info("템플릿 검증 요청 받음");
-            log.info("요청 데이터 - 템플릿 내용: {}, 변수 개수: {}, 카테고리: {}",
+            log.info("요청 데이터 - 템플릿 내용: {}, 변수 개수: {}, 카테고리: {}", 
                     requestDto.getTemplateContent() != null ? requestDto.getTemplateContent().substring(0, Math.min(50, requestDto.getTemplateContent().length())) : "null",
                     requestDto.getVariableList() != null ? requestDto.getVariableList().size() : "null",
                     requestDto.getCategory());
             
-            if (currentUser == null) {
-                log.error("현재 사용자가 null입니다");
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(Map.of("error", "인증되지 않은 사용자입니다"));
-            }
+            log.info("사용자 {}({})가 템플릿 검증을 요청했습니다.", currentUser.getUserName(), currentUser.getEmail());
             
-            UserDto userDto = userService.convertToUserDto(currentUser);
-            log.info("사용자 {}({})가 템플릿 검증을 요청했습니다.", userDto.getUserName(), userDto.getEmail());
-            
-            TemplateValidationResponseDto response = templateService.validateTemplate(requestDto, userDto);
+            TemplateValidationResponseDto response = templateService.validateTemplate(requestDto, currentUser);
             log.info("템플릿 검증 완료");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -70,8 +58,7 @@ public class TemplateController {
      */
     @PostMapping("/template/modify")
     public ResponseEntity<FastAPIResponseDto> modifyTemplate(
-            @Valid @RequestBody TemplateRequestDto requestDto,
-            @AuthenticationPrincipal Account currentUser
+            @Valid @RequestBody TemplateRequestDto requestDto
     ) {
         try {
             log.info("템플릿 수정 요청 시작 - 템플릿 내용: {}, 제목: {}, 사용자 메시지: {}",
@@ -79,12 +66,6 @@ public class TemplateController {
                     requestDto.getTemplateTitle(),
                     requestDto.getUserMessage());
             log.info("요청 데이터 전체: {}", requestDto);
-            
-            if (currentUser == null) {
-                log.error("인증되지 않은 사용자입니다 - currentUser is null");
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(new FastAPIResponseDto());
-            }
 
             FastAPIResponseDto response = templateService.modifyTemplateWithAi(requestDto);
             log.info("템플릿 수정 성공 - 응답: {}", response);
@@ -99,40 +80,6 @@ public class TemplateController {
             errorResponse.setTemplateTitle(requestDto.getTemplateTitle());
             errorResponse.setGenerationMethod("error");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }
-
-    @PostMapping("/template/save")
-    public ResponseEntity<TemplateSaveResponseDto> saveTemplate(
-            @RequestBody TemplateSaveRequestDto requestDto,
-            @AuthenticationPrincipal Account currentUser
-    ) {
-        try {
-            log.info("=== 템플릿 저장 요청 시작 ===");
-            log.info("템플릿 저장 요청 - currentUser: {}", currentUser);
-            log.info("SecurityContext Authentication: {}", SecurityContextHolder.getContext().getAuthentication());
-            log.info("요청 데이터 - 제목: '{}', 사용자메시지: '{}', 변수개수: {}", 
-                    requestDto.getTemplateTitle(), requestDto.getUserMessage(), 
-                    requestDto.getVariableList() != null ? requestDto.getVariableList().size() : 0);
-            log.info("변수 목록: {}", requestDto.getVariableList());
-            
-            if (currentUser == null) {
-                log.error("인증되지 않은 사용자입니다 - currentUser is null");
-                log.error("SecurityContext: {}", SecurityContextHolder.getContext().getAuthentication());
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(TemplateSaveResponseDto.failure("인증되지 않은 사용자입니다"));
-            }
-            
-            UserDto userDto = userService.convertToUserDto(currentUser);
-            TemplateSaveResponseDto response = templateService.saveTemplate(requestDto, userDto);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("=== 템플릿 저장 중 오류 발생 ===");
-            log.error("오류 타입: {}", e.getClass().getSimpleName());
-            log.error("오류 메시지: {}", e.getMessage());
-            log.error("오류 스택 트레이스:", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(TemplateSaveResponseDto.failure("템플릿 저장 중 오류가 발생하였습니다: "+ e.getMessage()));
         }
     }
 }
