@@ -2,11 +2,16 @@ package com.example.service;
 
 import com.example.dto.FastAPIResponseDto;
 import com.example.dto.TemplateRequestDto;
+import com.example.exception.external.ExternalApiException;
+import com.example.exception.external.ExternalErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+
 import java.util.Map;
 
 
@@ -122,15 +127,21 @@ public class AIService {
             log.info("변환된 응답 DTO: {}", response);
             return response;
                     
+        } catch (WebClientResponseException e) {
+        log.error("[AI] FastAPI가 에러 응답을 반환했습니다. status={}, body={}",
+                e.getStatusCode(), e.getResponseBodyAsString(), e);
+        throw new ExternalApiException(ExternalErrorCode.AI_SERVER_ERROR);
+
+        } catch (WebClientRequestException e) {
+        log.error("[AI] FastAPI 요청 중 네트워크/타임아웃 오류가 발생했습니다.", e);
+        throw new ExternalApiException(ExternalErrorCode.AI_SERVER_TIMEOUT);
+
+        } catch (ExternalApiException e) {
+        throw e; // 그대로 전파
+
         } catch (Exception e) {
-            log.error("FastAPI 템플릿 수정 요청 실패", e);
-            log.error("오류 상세 - 클래스: {}, 메시지: {}, 원인: {}", 
-                    e.getClass().getSimpleName(), e.getMessage(), e.getCause());
-            if (e.getCause() != null) {
-                log.error("원인 오류 상세 - 클래스: {}, 메시지: {}", 
-                        e.getCause().getClass().getSimpleName(), e.getCause().getMessage());
-            }
-            throw new RuntimeException("AI 서버 템플릿 수정 요청 중 오류가 발생했습니다: " + e.getMessage());
+        log.error("[AI] 템플릿 수정 처리 중 예기치 못한 오류가 발생했습니다.", e);
+        throw new ExternalApiException(ExternalErrorCode.AI_SERVER_ERROR);
         }
     }
 }
