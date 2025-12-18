@@ -25,7 +25,7 @@ public class MyPageController {
     }
 
 
-    // 이름 수정: 값이 있을 때만 반영
+    // 이름 수정
     @PutMapping("/name")
     public ResponseEntity<MyPageDto.UserInfoResponse> updateName(
             @Valid @RequestBody MyPageDto.UpdateNameRequest request,
