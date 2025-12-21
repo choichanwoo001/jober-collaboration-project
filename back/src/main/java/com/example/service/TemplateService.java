@@ -2,7 +2,10 @@ package com.example.service;
 
 import com.example.dto.*;
 import com.example.entity.*;
-import com.example.exception.ResourceNotFoundException;
+import com.example.exception.template.TemplateErrorCode;
+import com.example.exception.template.TemplateException;
+import com.example.exception.user.UserErrorCode;
+import com.example.exception.user.UserException;
 import com.example.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +34,7 @@ public class TemplateService {
         try {
             // 사용자 계정 조회
             Account account = accountRepository.findById(currentUser.getAccountId())
-                    .orElseThrow(() -> new ResourceNotFoundException("사용자를 찾을 수 없습니다."));
+                    .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
 
             // 카테고리 조회
             Category category = findCategoryByName(requestDto.getCategory());
@@ -153,7 +156,7 @@ public class TemplateService {
 
         } catch (Exception e) {
             log.error("템플릿 검증 중 오류 발생", e);
-            throw new RuntimeException("템플릿 검증 중 오류가 발생했습니다: " + e.getMessage());
+            throw new TemplateException(TemplateErrorCode.TEMPLATE_VALIDATE_FAIL);
         }
     }
 
@@ -346,12 +349,11 @@ public class TemplateService {
      * 주어진 ID로 Category 엔티티를 조회합니다.
      * @param categoryId 조회할 Category의 ID
      * @return 조회된 Category 엔티티
-     * @throws ResourceNotFoundException 해당 ID의 Category가 존재하지 않을 경우
      */
     @Transactional(readOnly = true)
     public Category findCategoryById(Long categoryId) {
         return categoryRepository.findById(categoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + categoryId));
+                .orElseThrow(() -> new TemplateException(TemplateErrorCode.CATEGORY_INVALID));
     }
 
     /**
@@ -362,7 +364,8 @@ public class TemplateService {
     public Category findCategoryByName(String categoryName) {
         // 카테고리 이름 유효성 검사
         if (categoryName == null || categoryName.trim().isEmpty()) {
-            throw new IllegalArgumentException("카테고리 이름이 비어있습니다.");
+            log.warn("템플릿 처리 중 잘못된 카테고리 이름 입력: '{}'", categoryName);
+            throw new TemplateException(TemplateErrorCode.CATEGORY_INVALID);
         }
         
         // 앞뒤 공백 제거하여 정규화
@@ -382,7 +385,7 @@ public class TemplateService {
                         return savedCategory;
                     } catch (Exception e) {
                         log.error("새로운 카테고리 생성 실패: {}", trimmedCategoryName, e);
-                        throw new RuntimeException("카테고리 생성 중 오류가 발생했습니다: " + e.getMessage(), e);
+                        throw new TemplateException(TemplateErrorCode.CATEGORY_CREATE_FAILED);
                     }
                 });
     }
