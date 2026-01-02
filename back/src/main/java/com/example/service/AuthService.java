@@ -9,8 +9,8 @@ import com.example.entity.Account;
 import com.example.exception.user.UserErrorCode;
 import com.example.exception.user.UserException;
 import com.example.repository.AccountRepository;
+import com.example.service.password.PasswordService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,7 +21,7 @@ import java.util.Map;
 public class AuthService {
 
     private final AccountRepository accountRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordService passwordService;
     private final TokenService tokenService;
 
     /**
@@ -39,7 +39,7 @@ public class AuthService {
         Account account = new Account();
         account.setUserName(request.getUsername());
         account.setEmail(request.getEmail());
-        account.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        account.setPasswordHash(passwordService.encode(request.getPassword()));
 
         // 기본값 세팅
         account.setRole("USER");
@@ -58,6 +58,7 @@ public class AuthService {
 
         if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
             throw new UserException(UserErrorCode.INVALID_EMAIL_PASSWORD);
+
         }
 
         // TokenService를 통해 토큰 쌍 생성

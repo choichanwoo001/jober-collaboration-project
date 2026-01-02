@@ -8,8 +8,8 @@ import com.example.exception.user.UserErrorCode;
 import com.example.exception.user.UserException;
 import com.example.repository.AccountRepository;
 import com.example.repository.PasswordResetTokenRepository;
+import com.example.service.password.PasswordService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +22,7 @@ public class PasswordResetService {
 
     private final AccountRepository accountRepository;
     private final PasswordResetTokenRepository tokenRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordService passwordService;
 
     // 비밀번호 재설정 토큰 생성
     public String createPasswordResetToken(ForgotPasswordRequest request) {
@@ -53,7 +53,7 @@ public class PasswordResetService {
         }
 
         Account account = resetToken.getAccount();
-        account.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        account.setPasswordHash(passwordService.encode(request.getNewPassword()));
         accountRepository.save(account);
 
         // 토큰은 한 번 쓰면 제거
