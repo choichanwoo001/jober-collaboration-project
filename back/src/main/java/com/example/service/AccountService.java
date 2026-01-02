@@ -2,9 +2,9 @@ package com.example.service;
 
 import com.example.entity.Account;
 import com.example.repository.AccountRepository;
+import com.example.service.password.PasswordService;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -15,7 +15,7 @@ import java.util.Optional;
 public class AccountService {
 
     private final AccountRepository accountRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordService passwordService;
 
     // 모든 사용자 조회
     @Transactional(readOnly = true)
@@ -40,7 +40,7 @@ public class AccountService {
     @Transactional
     public Account createAccount(Account account) {
         // 비밀번호 해시화
-        account.setPasswordHash(passwordEncoder.encode(account.getPasswordHash()));
+        account.setPasswordHash(passwordService.encode(account.getPasswordHash()));
         // 기본값 설정
         account.setRole("USER");
         account.setStatus("ACTIVE");
@@ -55,7 +55,7 @@ public class AccountService {
                     account.setUserName(accountDetails.getUserName());
                     account.setEmail(accountDetails.getEmail());
                     if (accountDetails.getPasswordHash() != null && !accountDetails.getPasswordHash().isEmpty()) {
-                        account.setPasswordHash(passwordEncoder.encode(accountDetails.getPasswordHash()));
+                        account.setPasswordHash(passwordService.encode(accountDetails.getPasswordHash()));
                     }
                     return accountRepository.save(account);
                 })

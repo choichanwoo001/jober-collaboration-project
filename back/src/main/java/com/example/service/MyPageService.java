@@ -4,8 +4,8 @@ import com.example.dto.MyPageDto;
 import com.example.dto.UserDto;
 import com.example.entity.Account;
 import com.example.repository.AccountRepository;
+import com.example.service.password.PasswordService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MyPageService {
 
     private final AccountRepository accountRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordService passwordService;
 
     // UserDto를 DTO로 변환
     @Transactional(readOnly = true)
@@ -50,7 +50,7 @@ public class MyPageService {
                 .orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
         // 1) 현재 비밀번호 재검증 (평문 vs 해시 → matches)
-        if (!passwordEncoder.matches(req.getCurrentPassword(), user.getPasswordHash())) {
+        if (!passwordService.matches(req.getCurrentPassword(), user.getPasswordHash())) {
             throw new IllegalArgumentException("Current password is incorrect");
         }
 
@@ -77,12 +77,12 @@ public class MyPageService {
                 .orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
         // 현재 비밀번호 검증 (절대 평문과 해시를 equals 비교하지 말 것!)
-        if (!passwordEncoder.matches(req.getCurrentPassword(), user.getPasswordHash())) {
+        if (!passwordService.matches(req.getCurrentPassword(), user.getPasswordHash())) {
             throw new IllegalArgumentException("Current password is incorrect");
         }
 
         // @PasswordMatch가 DTO 레벨에서 new == confirm을 이미 검증하므로 여기선 새 비번만 인코딩 저장
-        user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        user.setPasswordHash(passwordService.encode(req.getNewPassword()));
         accountRepository.save(user);
 
         // 비밀번호 변경 후에도 기존 토큰 무효화를 위해 버전 증가

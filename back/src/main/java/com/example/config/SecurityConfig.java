@@ -58,11 +58,10 @@ public class SecurityConfig {
         return authenticationConfiguration.getAuthenticationManager();
     }
 
-    // PasswordEncoder 등록 (비밀번호 암호화/검증에 필요)
+    // PasswordEncoder 등록 (Spring Security용)
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
-
 
 }

@@ -7,8 +7,8 @@ import com.example.dto.LoginRequest;
 import com.example.dto.SignupRequest;
 import com.example.entity.Account;
 import com.example.repository.AccountRepository;
+import com.example.service.password.PasswordService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +19,7 @@ import java.util.Map;
 public class AuthService {
 
     private final AccountRepository accountRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordService passwordService;
     private final TokenService tokenService;
 
     /**
@@ -37,7 +37,7 @@ public class AuthService {
         Account account = new Account();
         account.setUserName(request.getUsername());
         account.setEmail(request.getEmail());
-        account.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        account.setPasswordHash(passwordService.encode(request.getPassword()));
 
         // 기본값 세팅
         account.setRole("USER");
@@ -54,7 +54,7 @@ public class AuthService {
         Account account = accountRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다."));
 
-        if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
+        if (!passwordService.matches(request.getPassword(), account.getPasswordHash())) {
             throw new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다.");
         }
 
