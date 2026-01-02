@@ -4,6 +4,7 @@ import com.example.dto.UserDto;
 import com.example.entity.Account;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import java.util.Objects;
 
 /**
  * 사용자 관련 공통 서비스
@@ -21,9 +22,7 @@ public class UserService {
      * @return UserDto 객체
      */
     public UserDto convertToUserDto(Account account) {
-        if (account == null) {
-            throw new IllegalArgumentException("Account는 null일 수 없습니다");
-        }
+        Objects.requireNonNull(account, "Account는 null일 수 없습니다");
         
         return new UserDto(
             account.getId(),

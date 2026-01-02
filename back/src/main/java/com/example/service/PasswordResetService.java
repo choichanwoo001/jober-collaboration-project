@@ -4,6 +4,8 @@ import com.example.dto.ForgotPasswordRequest;
 import com.example.dto.ResetPasswordRequest;
 import com.example.entity.Account;
 import com.example.entity.PasswordResetToken;
+import com.example.exception.user.UserErrorCode;
+import com.example.exception.user.UserException;
 import com.example.repository.AccountRepository;
 import com.example.repository.PasswordResetTokenRepository;
 import com.example.service.password.PasswordService;
@@ -25,7 +27,7 @@ public class PasswordResetService {
     // 비밀번호 재설정 토큰 생성
     public String createPasswordResetToken(ForgotPasswordRequest request) {
         Account account = accountRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new IllegalArgumentException("등록되지 않은 이메일입니다."));
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
 
         String token = UUID.randomUUID().toString();
         PasswordResetToken resetToken = PasswordResetToken.builder()
@@ -44,10 +46,10 @@ public class PasswordResetService {
     @Transactional
     public void resetPassword(ResetPasswordRequest request) {
         PasswordResetToken resetToken = tokenRepository.findByToken(request.getToken())
-                .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 토큰입니다."));
+                .orElseThrow(() -> new UserException(UserErrorCode.INVALID_TOKEN));
 
         if (resetToken.getExpiryDate().isBefore(LocalDateTime.now())) {
-            throw new IllegalArgumentException("토큰이 만료되었습니다.");
+            throw new UserException(UserErrorCode.EXPIRED_TOKEN);
         }
 
         Account account = resetToken.getAccount();
