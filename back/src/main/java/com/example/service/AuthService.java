@@ -56,7 +56,7 @@ public class AuthService {
         Account account = accountRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new UserException(UserErrorCode.INVALID_EMAIL_PASSWORD));
 
-        if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
+        if (!passwordService.matches(request.getPassword(), account.getPasswordHash())) {
             throw new UserException(UserErrorCode.INVALID_EMAIL_PASSWORD);
 
         }
