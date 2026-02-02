@@ -5,6 +5,8 @@ import com.example.dto.TemplateRequestDto;
 import com.example.dto.TemplateValidationRequestDto;
 import com.example.dto.TemplateValidationResponseDto;
 import com.example.dto.UserDto;
+import com.example.dto.TemplateSaveRequestDto;
+import com.example.dto.TemplateSaveResponseDto;
 import com.example.service.TemplateService;
 import com.example.common.annotation.RequireAuth;
 import com.example.common.annotation.CurrentUser;
@@ -14,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.Map;
 
 @RestController
@@ -30,7 +33,7 @@ public class TemplateController {
      */
     @RequireAuth
     @PostMapping("/template/validate")
-    public ResponseEntity<?> validateTemplate(
+    public ResponseEntity<TemplateValidationResponseDto> validateTemplate(
             @Valid @RequestBody TemplateValidationRequestDto requestDto,
             @CurrentUser UserDto currentUser
     ) {
@@ -48,8 +51,58 @@ public class TemplateController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("템플릿 검증 중 오류 발생", e);
+            TemplateValidationResponseDto response = templateService.validateTemplate(requestDto, currentUser);
+            return ResponseEntity.ok(response);
+        }
+    }
+
+    /**
+     * 템플릿 신규 생성 (POST /api/template/create)
+     * 생성하기 직후 1차 저장용
+     */
+    @RequireAuth
+    @PostMapping("/template/create")
+    public ResponseEntity<TemplateSaveResponseDto> createTemplate(
+            @Valid @RequestBody TemplateSaveRequestDto requestDto,
+            @CurrentUser UserDto currentUser
+    ) {
+        log.info("템플릿 신규 생성 요청 - 사용자: {}({}), 카테고리: {}, 제목: {}",
+                currentUser.getUserName(),
+                currentUser.getEmail(),
+                requestDto.getCategory(),
+                requestDto.getTemplateTitle());
+
+        TemplateSaveResponseDto response = templateService.upsertTemplate(requestDto, currentUser);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 템플릿 업데이트 (POST /api/template/save)
+     * templateId 필수, 기존 템플릿만 업데이트 가능
+     */
+    @RequireAuth
+    @PostMapping("/template/save")
+    public ResponseEntity<TemplateSaveResponseDto> saveTemplate(
+            @Valid @RequestBody TemplateSaveRequestDto requestDto,
+            @CurrentUser UserDto currentUser
+    ) {
+        try {
+            log.info("템플릿 업데이트 요청 - 사용자: {}({}), 카테고리: {}, 제목: {}",
+                    currentUser.getUserName(),
+                    currentUser.getEmail(),
+                    requestDto.getCategory(),
+                    requestDto.getTemplateTitle());
+
+            TemplateSaveResponseDto response = templateService.upsertTemplate(requestDto, currentUser);
+            if (response.isSuccess()) {
+                return ResponseEntity.ok(response);
+            } else {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
+        } catch (Exception e) {
+            log.error("템플릿 저장 중 오류 발생", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "템플릿 검증 중 오류가 발생했습니다: " + e.getMessage()));
+                    .body(TemplateSaveResponseDto.failure("템플릿 저장 중 오류가 발생했습니다: " + e.getMessage()));
         }
     }
 

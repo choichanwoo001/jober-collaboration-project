@@ -26,6 +26,24 @@ public enum TemplateErrorCode implements ErrorCode {
             "TEMPLATE_004",
             "카테고리 정보가 올바르지 않습니다.",
             400
+    ),
+
+    TEMPLATE_NOT_FOUND(
+            "TEMPLATE_005",
+            "템플릿을 찾을 수 없습니다.",
+            404
+    ),
+
+    TEMPLATE_OWNERSHIP_MISMATCH(
+            "TEMPLATE_006",
+            "템플릿 소유자가 아닙니다.",
+            403
+    ),
+
+    TEMPLATE_ID_REQUIRED(
+            "TEMPLATE_007",
+            "템플릿 ID가 필요합니다. 업데이트하려면 templateId를 제공해주세요.",
+            400
     );
 
     private final String code;
