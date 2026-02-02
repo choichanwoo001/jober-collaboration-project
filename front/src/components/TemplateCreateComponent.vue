@@ -86,8 +86,24 @@ const handleSubmit = async () => {
     // AI 서버의 응답을 sessionStorage에 저장합니다.
     const responseData = response.data;
 
-    // AI가 반환한 variables는 이미 문자열 배열입니다.
-    const variableNames = responseData.variables || [];
+    // 템플릿 내용에서 실제로 사용된 변수만 추출 ({{변수}} 형태)
+    const extractVariablesFromTemplate = (template: string): string[] => {
+      const doubleBracePattern = /\{\{([^}]+)\}\}/g
+      const found = new Set<string>()
+      
+      let m
+      while ((m = doubleBracePattern.exec(template)) !== null) {
+        const name = (m[1] || '').trim()
+        if (name) {
+          found.add(name)
+        }
+      }
+      
+      return Array.from(found)
+    }
+
+    // 템플릿 내용에서 실제 사용된 변수만 추출 (중복 자동 제거)
+    const variableNames = extractVariablesFromTemplate(responseData.template_content || '')
 
     sessionStorage.setItem('generatedTemplate', JSON.stringify({
       templateContent: responseData.template_content,
@@ -96,6 +112,28 @@ const handleSubmit = async () => {
       category: responseData.category || '기타',
       userMessage: templateStore.userMessage
     }));
+
+    // 1차 저장: 생성 직후 백엔드에 임시 저장하여 templateId 확보
+    try {
+      const saveResponse = await templateApi.createTemplate(
+        responseData.template_content,
+        variableNames,
+        responseData.category || '기타',
+        templateStore.userMessage,
+        responseData.template_title || ''
+      )
+
+      if (saveResponse.data?.success && saveResponse.data?.templateId) {
+        sessionStorage.setItem('templateId', saveResponse.data.templateId)
+      } else {
+        alert('초기 템플릿 저장에 실패했습니다. 다시 시도해주세요.')
+        return
+      }
+    } catch (saveError) {
+      console.error('초기 템플릿 저장 실패:', saveError)
+      alert('초기 템플릿 저장에 실패했습니다. 다시 시도해주세요.')
+      return
+    }
     
     // 새 템플릿 생성 시 수정 횟수 초기화 (10번으로 설정)
     sessionStorage.setItem('template_modifications_new', '10')

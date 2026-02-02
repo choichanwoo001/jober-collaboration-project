@@ -1259,7 +1259,7 @@ const submitTemplate = async () => {
         alert(`템플릿 수정이 필요합니다 📝\n\n${validationStage.value}에서 ${totalErrors.value}개 오류, ${totalWarnings.value}개 경고가 발견되었습니다.\n오른쪽 사이드바에서 상세 내용과 수정 방법을 확인해주세요.`)
       }, 100)
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('템플릿 검증 실패:', error)
     showErrorAlert('템플릿 검증 중 오류가 발생했습니다. 다시 시도해주세요.')
   } finally {
