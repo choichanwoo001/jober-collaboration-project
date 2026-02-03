@@ -75,7 +75,7 @@ public class TemplateController {
                     requestDto.getCategory(),
                     requestDto.getTemplateTitle());
 
-            TemplateSaveResponseDto response = templateService.saveTemplate(requestDto, currentUser);
+            TemplateSaveResponseDto response = templateService.upsertTemplate(requestDto, currentUser);
 
             if (response.isSuccess()) {
                 return ResponseEntity.ok(response);
@@ -108,7 +108,7 @@ public class TemplateController {
                     requestDto.getCategory(),
                     requestDto.getTemplateTitle());
 
-            TemplateSaveResponseDto response = templateService.saveTemplate(requestDto, currentUser);
+            TemplateSaveResponseDto response = templateService.upsertTemplate(requestDto, currentUser);
 
             if (response.isSuccess()) {
                 return ResponseEntity.ok(response);

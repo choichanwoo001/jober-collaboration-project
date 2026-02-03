@@ -39,8 +39,17 @@ public class AccountCacheService {
                     accountCacheRedisTemplate.opsForValue().get(cacheKey);
 
             if (cachedDto != null) {
-                log.debug("✅ Account 캐시 히트: accountId={}", accountId);
-                return cachedDto.toEntity();
+                Account cachedAccount = cachedDto.toEntity();
+                // 이전 버전의 캐시 데이터는 email이 null일 수 있음
+                // email이 null이면 캐시를 무효화하고 DB에서 다시 조회
+                if (cachedAccount.getEmail() == null) {
+                    log.warn("⚠️ Account 캐시 데이터에 email이 없음: accountId={}, 캐시 무효화 후 DB 조회", accountId);
+                    evictAccountCache(accountId);
+                    // DB에서 다시 조회하도록 fallthrough
+                } else {
+                    log.debug("✅ Account 캐시 히트: accountId={}", accountId);
+                    return cachedAccount;
+                }
             }
 
             // 2️⃣ 캐시 미스 → DB 조회
