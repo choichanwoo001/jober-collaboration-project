@@ -183,9 +183,15 @@ public class TemplateService {
             
             return response;
 
+        } catch (com.example.exception.external.ExternalApiException e) {
+            // AI 장애/타임아웃은 그대로 전파 -> GlobalExceptionHandler가 처리
+            throw e;
+
         } catch (Exception e) {
             log.error("템플릿 검증 중 오류 발생", e);
-            throw new TemplateException(TemplateErrorCode.TEMPLATE_VALIDATE_FAIL);
+            // 여기서도 가능하면 BusinessException 계열로 변환하거나,
+            // 최소한 메시지 덜어내고 공통 처리
+            throw new RuntimeException("템플릿 검증 중 서버 오류가 발생했습니다.");
         }
     }
 

@@ -14,6 +14,7 @@ import java.io.Serializable;
  * JwtAuthenticationFilter에서 실제로 사용하는 필드만 포함합니다.
  * - id: 계정 ID
  * - userName: 사용자 이름 (SecurityContext에 설정)
+ * - email: 이메일 (UserDto 변환 시 필요)
  * - role: 권한 (SecurityContext에 설정)
  * - status: 계정 상태 (ACTIVE 체크용)
  * 
@@ -30,6 +31,7 @@ public class AccountCacheDto implements Serializable {
     
     private Long id;
     private String userName;
+    private String email;
     private String role;
     private String status;
     
@@ -44,6 +46,7 @@ public class AccountCacheDto implements Serializable {
         return AccountCacheDto.builder()
                 .id(account.getId())
                 .userName(account.getUserName())
+                .email(account.getEmail())
                 .role(account.getRole())
                 .status(account.getStatus())
                 .build();
@@ -58,6 +61,7 @@ public class AccountCacheDto implements Serializable {
         Account account = new Account();
         account.setId(this.id);
         account.setUserName(this.userName);
+        account.setEmail(this.email);
         account.setRole(this.role);
         account.setStatus(this.status);
         return account;
