@@ -1,7 +1,6 @@
-from pydantic import BaseSettings
-from typing import Optional
 import os
 from dotenv import load_dotenv
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
 
@@ -24,6 +23,11 @@ class Settings(BaseSettings):
     CHROMA_PORT: str = os.getenv("CHROMA_PORT", "8001")
     CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 
+    # Celery 설정
+    CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://:1234@localhost:6379/0")
+    CELERY_RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND", "redis://:1234@localhost:6379/0")
+
+
     # 카테고리 관련 설정
     CATEGORY_CONFIDENCE_THRESHOLD: int = 70
     AUTO_CREATE_CATEGORIES: bool = True
@@ -32,6 +36,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra="ignore"
 
 # 전역 설정 인스턴스
 settings = Settings()
