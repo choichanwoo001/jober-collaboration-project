@@ -6,9 +6,11 @@ import com.example.exception.template.TemplateErrorCode;
 import com.example.exception.template.TemplateException;
 import com.example.exception.user.UserErrorCode;
 import com.example.exception.user.UserException;
+import com.example.event.CategoryUsageIncrementEvent;
 import com.example.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,7 @@ public class TemplateService {
 
     private final TemplateRepository templateRepository;
     private final CategoryRepository categoryRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final AccountRepository accountRepository;
     private final AIService aiService; // FastAPI 통신을 전담할 서비스 주입
     private final TemplateVariableResolver variableResolver; // 변수 처리 유틸리티
@@ -57,7 +60,8 @@ public class TemplateService {
 
         Template saved = templateRepository.save(template);
 
-        incrementCategoryUsageCount(dto.getCategory());
+        // 카테고리 사용량 증가는 부가 지표이므로, 커밋 이후 별도 처리(best-effort)
+        eventPublisher.publishEvent(new CategoryUsageIncrementEvent(dto.getCategory()));
         log.info("Template upsert 완료: id={}", saved.getTemplateId());
         return TemplateSaveResponseDto.success(saved.getTemplateId().toString());
     }
@@ -413,21 +417,6 @@ public class TemplateService {
                         throw new TemplateException(TemplateErrorCode.CATEGORY_CREATE_FAILED);
                     }
                 });
-    }
-
-    /**
-     * 카테고리 사용량을 증가시킵니다.
-     */
-    @Transactional
-    public void incrementCategoryUsageCount(String categoryName) {
-        try {
-            Category category = findCategoryByName(categoryName);
-            category.setUsageCount(category.getUsageCount() + 1);
-            categoryRepository.save(category);
-            log.info("카테고리 사용량 증가: {} (현재 사용량: {})", categoryName, category.getUsageCount());
-        } catch (Exception e) {
-            log.error("카테고리 사용량 증가 실패: {}", categoryName, e);
-        }
     }
 
     /**
