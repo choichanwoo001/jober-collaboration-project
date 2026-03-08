@@ -4,6 +4,7 @@ chromadb
 transformers
 torch
 pydantic
+pydantic-settings
 python-dotenv
 sentence-transformers
 numpy
@@ -28,3 +29,5 @@ openai>=1.0.0
 PyJWT>=2.8.0
 flake8
 pytest
+celery
+redis

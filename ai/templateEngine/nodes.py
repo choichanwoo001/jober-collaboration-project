@@ -57,7 +57,7 @@ async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any
         try:
             prompt_builder = TypePromptBuilder(state["userMessage"])
             messages = prompt_builder.build()
-            response = await state["openai_service"].chat_completion(messages)
+            response = await state["openai_service"].chat_completion_blocking(messages)
             cleaned_response = clean_json_response(response)
             return json.loads(cleaned_response)
         except Exception as e:
@@ -68,7 +68,7 @@ async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any
         try:
             prompt_builder = TemplateTitlePromptBuilder(state["userMessage"])
             messages = prompt_builder.build()
-            title_result = await state["openai_service"].chat_completion(messages)
+            title_result = await state["openai_service"].chat_completion_blocking(messages)
             # 따옴표 제거
             cleaned_title = title_result.strip().strip('"').strip("'")
             logger.info(f"✅ 제목 생성 성공: {cleaned_title}")
@@ -80,11 +80,11 @@ async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any
     async def classify_category_task():
         try:
             category_service = CategoryService(state["db_session"])
-            current_categories = await category_service.get_all_categories()
+            current_categories = await asyncio.to_thread(category_service.get_all_categories)
 
             category_builder = CategoryPromptBuilder(state["userMessage"], current_categories)
             messages = category_builder.build()
-            response = await state["openai_service"].chat_completion(messages)
+            response = await state["openai_service"].chat_completion_blocking(messages)
             cleaned_response = clean_json_response(response)
             result = json.loads(cleaned_response)
 
@@ -94,11 +94,16 @@ async def initial_analysis_node(state: TemplateGenerationState) -> Dict[str, Any
             else:
                 new_category_builder = NewCategoryPromptBuilder(state["userMessage"], current_categories)
                 messages = new_category_builder.build()
-                response = await state["openai_service"].chat_completion(messages)
+                response = await state["openai_service"].chat_completion_blocking(messages)
                 cleaned_response = clean_json_response(response)
                 new_category_result = json.loads(cleaned_response)
                 new_category_name = new_category_result.get("new_category")
-                await category_service.create_category_if_not_exists(new_category_name)
+                new_category_obj = await asyncio.to_thread(category_service.create_category_if_not_exists, new_category_name)
+                
+                # [수정] 카테고리 생성/조회 실패 시 안전하게 대체
+                if not new_category_obj:
+                    logger.error(f"❌ 신규 카테고리 '{new_category_name}' 생성/조회에 실패하여 '기타'로 대체합니다.")
+                    return {"category_sub": "기타", "selection_reason": "신규 카테고리 생성 실패"}
                 
                 return {
                     "category_sub": new_category_name, "confidence": 95,
@@ -134,7 +139,7 @@ async def generate_template_node(state: TemplateGenerationState) -> Dict[str, An
         # TemplateWriterBuilder를 사용하여 간결한 텍스트 생성
         prompt_builder = TemplateWriterBuilder(state["userMessage"])
         messages = prompt_builder.build()
-        generated_text = await state["openai_service"].chat_completion(messages)
+        generated_text = await state["openai_service"].chat_completion_blocking(messages)
 
         logger.info("✅ 간결한 템플릿 생성 성공")
         return {"generated_template": generated_text}
@@ -145,11 +150,11 @@ async def generate_template_node(state: TemplateGenerationState) -> Dict[str, An
 
 async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
     """
-    [최종 수정] '의미 블록'과 '개별 변수'를 두 단계로 나누어 추출하고 결과를 병합합니다.
+    [3단계] 생성된 템플릿에서 의미 블록과 개별 변수를
+    한 번의 OpenAI 호출로 함께 추출하는 노드입니다.
     """
     logger.info("=" * 60)
-    logger.info("3단계: 의미 블록 및 개별 변수 추출 시작")
-
+    logger.info("3단계: 의미 블록/변수 추출 시작 (단일 호출)")
 
     generated_template = state.get("generated_template")
     if not generated_template or "실패" in generated_template:
@@ -157,93 +162,37 @@ async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
         return {"extracted_fields": {}}
 
     try:
-        # --- 1단계: '의미 블록' 추출 ---
-        logger.info("  - (3-1) 의미 블록 추출 중...")
-        block_builder = FieldsPromptBuilder(generated_template)
-        block_messages = block_builder.build()
-        block_response = await state["openai_service"].chat_completion(block_messages)
-        
-        # JSON 파싱 안전 처리
+        # 1. AI에게 의미 블록 + 개별 변수를 한 번에 추출하도록 요청
+        prompt_builder = FieldsPromptBuilder(generated_template)
+        messages = prompt_builder.build()
+        response = await state["openai_service"].chat_completion_blocking(messages)
+
+        # JSON 파싱 (마크다운 코드블록 등 제거 후)
         try:
-            cleaned_block_response = clean_json_response(block_response)
-            block_fields = json.loads(cleaned_block_response)
-            logger.info(f"  ✅ 의미 블록 추출 성공: {list(block_fields.keys())}")
+            cleaned_response = clean_json_response(response)
+            extracted_fields = json.loads(cleaned_response)
+            logger.info(f"✅ (1차) 의미 블록/변수 추출 성공: {len(extracted_fields)}개")
+            logger.debug(f"  - AI 원본 추출 결과: {extracted_fields}")
         except json.JSONDecodeError as e:
-            logger.error(f"  ❌ 의미 블록 JSON 파싱 실패: {e}")
-            logger.error(f"  📝 AI 응답 내용: {block_response}")
-            block_fields = {}
+            logger.error(f"❌ 의미 블록/변수 JSON 파싱 실패: {e}")
+            logger.error(f"📝 AI 응답 내용: {response}")
+            extracted_fields = {}
 
-        # --- 2단계: '개별 변수' 추출 ---
-        logger.info("  - (3-2) 개별 변수 추출 중...")
-        variable_builder = IndividualVariableExtractor(generated_template)
-        variable_messages = variable_builder.build()
-        variable_response = await state["openai_service"].chat_completion(variable_messages)
-        
-        # JSON 파싱 안전 처리
-        try:
-            cleaned_variable_response = clean_json_response(variable_response)
-            individual_variables = json.loads(cleaned_variable_response)
-            logger.info(f"  ✅ 개별 변수 추출 성공: {list(individual_variables.keys())}")
-        except json.JSONDecodeError as e:
-            logger.error(f"  ❌ 개별 변수 JSON 파싱 실패: {e}")
-            logger.error(f"  📝 AI 응답 내용: {variable_response}")
-            individual_variables = {}
+        # --- 후처리(Post-processing) 로직 ---
+        # 2. 'customer_title'에서 '님' 제거 등 교정
+        if "customer_title" in extracted_fields:
+            original_title = extracted_fields["customer_title"]
+            if isinstance(original_title, str) and original_title.endswith("님") and len(original_title) > 1:
+                corrected_title = original_title[:-1]  # 마지막 글자('님') 제거
+                extracted_fields["customer_title"] = corrected_title
+                logger.info(
+                    f"✅ (후처리) 'customer_title' 교정: '{original_title}' -> '{corrected_title}'"
+                )
 
-        # --- 3단계: 두 결과 병합 ---
-        # individual_variables를 먼저 두고, block_fields로 덮어씁니다.
-        # 이렇게 하면, 만약 중복된 Key가 있더라도 더 큰 범위인 '의미 블록'의 값이 유지됩니다.
-        final_extracted_fields = {**individual_variables, **block_fields}
-
-        # '고객님' -> '고객' 후처리 로직은 여전히 유효합니다.
-        if "customer_title" in final_extracted_fields:
-            original_title = final_extracted_fields["customer_title"]
-            if original_title.endswith("님") and len(original_title) > 1:
-                final_extracted_fields["customer_title"] = original_title[:-1]
-                logger.info("  - (후처리) 'customer_title' 교정 완료.")
-
-        logger.info(f"✅ 최종 필드 병합 완료. 총 {len(final_extracted_fields)}개의 변수/블록 추출.")
-        return {"extracted_fields": final_extracted_fields}
+        return {"extracted_fields": extracted_fields}
     except Exception as e:
-        logger.error(f"❌ 블록/변수 추출 과정에서 오류 발생: {e}")
+        logger.error(f"❌ 의미 블록/변수 추출 실패: {e}")
         return {"extracted_fields": {}}
-
-
-# async def extract_blocks_node(state: TemplateGenerationState) -> Dict[str, Any]:
-#     """
-#     [3단계] 생성된 템플릿에서 의미 블록과 변수를 추출하고, '후처리'로 결과를 교정합니다.
-#     """
-#     logger.info("=" * 60)
-#     logger.info("3단계: 의미 블록 추출 시작")
-#     try:
-#         generated_template = state.get("generated_template")
-#         if not generated_template or "실패" in generated_template:
-#             logger.warning("⚠️ 이전 단계에서 템플릿 생성이 실패하여 블록 추출을 건너뜁니다.")
-#             return {"extracted_fields": {}}
-#
-#         # 1. AI에게 평소처럼 추출을 요청합니다.
-#         prompt_builder = FieldsPromptBuilder(generated_template)
-#         messages = prompt_builder.build()
-#         response = await state["openai_service"].chat_completion(messages)
-#         extracted_fields = json.loads(response)
-#
-#         logger.info(f"✅ (1차) AI의 의미 블록 추출 성공: {len(extracted_fields)}개")
-#         logger.debug(f"  - AI 원본 추출 결과: {extracted_fields}")
-#
-#         # --- [핵심 수정] 후처리(Post-processing) 로직 ---
-#         # 2. AI가 추출한 결과에서 'customer_title' 값을 직접 확인하고 교정합니다.
-#         if "customer_title" in extracted_fields:
-#             original_title = extracted_fields["customer_title"]
-#             # 만약 값이 '고객님', '회원님' 등 '님'으로 끝나면, '님'을 제거합니다.
-#             if original_title.endswith("님") and len(original_title) > 1:
-#                 corrected_title = original_title[:-1] # 마지막 글자('님')를 제거
-#                 extracted_fields["customer_title"] = corrected_title
-#                 logger.info(f"✅ (2차) 후처리 교정 완료: 'customer_title'을 '{original_title}'에서 '{corrected_title}'(으)로 수정했습니다.")
-#         # ----------------------------------------------------
-#
-#         return {"extracted_fields": extracted_fields}
-#     except Exception as e:
-#         logger.error(f"❌ 의미 블록 추출 실패: {e}")
-#         return {"extracted_fields": {}}
 
 
 # def finalize_node(state: TemplateGenerationState) -> Dict[str, Any]:
@@ -375,5 +324,3 @@ def finalize_node(state: TemplateGenerationState) -> Dict[str, Any]:
     logger.info("-" * 60)
 
     return {"final_result": final_result}
-
-
