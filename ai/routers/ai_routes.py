@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional, Dict, Any
+import os
 import re
 from services.openai_service import OpenAIService
 
@@ -47,7 +48,18 @@ async def modify_template(
     request: TemplateModificationRequest,
     openai_service: OpenAIService = Depends(get_openai_service)
 ):
-    """채팅을 통한 템플릿 수정"""
+    """채팅을 통한 템플릿 수정. MOCK_OPENAI=1 이면 OpenAI 호출 없이 더미 응답 반환 (k6 수정 테스트용)."""
+    if os.getenv("MOCK_OPENAI", "").lower() in ("1", "true", "yes"):
+        variables = list(set(re.findall(r"\{\{([^}]+)\}\}", request.current_template or "")))
+        variables = [v.strip() for v in variables]
+        return TemplateModificationResponse(
+            modified_template=(request.current_template or "") + "\n[Mock 수정]",
+            template_title=request.current_template_title or "",
+            variables=variables,
+            explanation="[Mock] MOCK_OPENAI=1 로 수정 응답을 반환했습니다.",
+            model="mock",
+        )
+
     try:
         # 채팅 히스토리를 포함한 프롬프트 구성
         chat_context = ""

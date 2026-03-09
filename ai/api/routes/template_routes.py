@@ -1,5 +1,6 @@
 # api/routes/template_routes.py
 
+import os
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -43,10 +44,20 @@ async def generate_template_endpoint(
 ):
     """
     LangGraph 기반의 지능형 템플릿 생성 파이프라인을 실행합니다.
+    MOCK_OPENAI=1 이면 OpenAI 호출 없이 더미 응답 반환 (k6 등 부하 테스트용).
     """
-    # [삭제] CategoryService를 여기서 직접 호출할 필요가 없습니다.
-    # category_service = CategoryService(db_session)
-    # category_sub_list= await category_service.get_all_categories()
+    # k6/부하 테스트 시 API 한도 소진 방지: mock 모드면 즉시 더미 200 반환
+    if os.getenv("MOCK_OPENAI", "").lower() in ("1", "true", "yes"):
+        return GenerationResponse(
+            template_content="[MOCK] 부하 테스트용 더미 템플릿입니다.",
+            variables=[{"name": "고객명", "type": "string", "description": "변수: 고객명"}],
+            category="기타",
+            model="gpt-4o-mini",
+            template_title="[MOCK] 테스트 제목",
+            generation_method="mock",
+            similarity_score=0.0,
+        )
+
     try:
         sanitize_userMessage = PromptDefense.sanitize_user_input(request.userMessage)
 
