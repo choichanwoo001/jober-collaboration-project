@@ -21,11 +21,19 @@ const BACK_BASE = __ENV.BACK_BASE_URL || 'http://localhost:8080';
 const AI_BASE = __ENV.AI_BASE_URL || 'http://localhost:8000';
 
 export const options = {
-  stages: [
-    { duration: '20s', target: 40 },
-    { duration: '40s', target: 80 },
-    { duration: '20s', target: 0 },
-  ],
+  scenarios: {
+    // executor: 'ramping-vus' -> 'constant-arrival-rate'로 변경
+    // 초당 5개의 요청을 꾸준히 보내 Celery 큐의 처리 능력을 테스트합니다.
+    ai_generation_arrival_rate: {
+      executor: 'constant-arrival-rate',
+      rate: 2, // 초당 요청 수 (Worker 처리량에 맞춰 조절)
+      timeUnit: '1s', // rate의 시간 단위
+      duration: '2m', // 2분 동안 테스트
+      preAllocatedVUs: 100, // 시작 시 할당할 VU 수 (rate * 평균 응답 시간보다 커야 함)
+      maxVUs: 200, // 최대 VU 수 (안전장치)
+      gracefulStop: '90s'
+    },
+  },
   thresholds: {
     http_req_failed: ['rate<0.1'],
   },
@@ -91,69 +99,46 @@ export default function (data) {
   const accessToken = data.accessToken;
   const userMessage = SAMPLE_MESSAGES[__VU % SAMPLE_MESSAGES.length];
 
-  // 1) AI 서버에 템플릿 생성 작업 큐잉
-  const queueRes = http.post(
-    `${AI_BASE}/ai/template/generate`,
-    JSON.stringify({ userMessage }),
+  // 1) AI 서버에 SSE 연결 (Redis Pub/Sub 기반)
+  // 폴링 없이 연결을 유지하며 Celery 작업 완료 이벤트를 기다립니다.
+  const sseRes = http.get(
+    `${AI_BASE}/ai/template/generate/stream?userMessage=${encodeURIComponent(userMessage)}`,
     {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: '10s',
+      // Celery 작업 시간을 고려하여 타임아웃을 넉넉히 설정 (예: 90초)
+      timeout: '90s',
     },
   );
 
-  check(queueRes, {
-    'queue status is 202': (r) => r.status === 202,
+  check(sseRes, {
+    'sse status is 200': (r) => r.status === 200,
   });
 
-  let taskId;
-  try {
-    const body = JSON.parse(queueRes.body);
-    taskId = body.task_id;
-  } catch (e) {
-    console.warn(`queue 응답 파싱 실패: ${queueRes.body}`);
-  }
-
-  if (!taskId) {
-    console.warn(`[VU ${__VU}] task_id 없음, 종료`);
+  if (sseRes.status !== 200) {
+    console.warn(`[VU ${__VU}] SSE 요청 실패: ${sseRes.status} ${sseRes.body}`);
     return;
   }
 
-  // 2) AI 서버에 폴링해서 실제 템플릿 생성 결과 받기
   let finalResult = null;
-  const maxPolls = 30; // 최대 30번 * 2초 = 60초
-  for (let i = 0; i < maxPolls; i++) {
-    const pollRes = http.get(`${AI_BASE}/ai/template/generate/task/${taskId}`, {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: '10s',
-    });
-
-    if (pollRes.status !== 200) {
-      console.warn(`[VU ${__VU}] 폴링 응답 코드 이상: ${pollRes.status}`);
-      sleep(2);
-      continue;
+  try {
+    // SSE 응답은 "data: {...}\n\n" 형태가 여러 번 올 수 있습니다.
+    // "SUCCESS" 상태를 가진 마지막 메시지를 찾습니다.
+    const lines = sseRes.body.split('\n\n');
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const jsonStr = line.substring(6).trim();
+        const obj = JSON.parse(jsonStr);
+        if (obj.status === 'SUCCESS') {
+          finalResult = obj;
+          break;
+        }
+      }
     }
-
-    let j;
-    try {
-      j = JSON.parse(pollRes.body);
-    } catch (e) {
-      console.warn(`[VU ${__VU}] 폴링 응답 JSON 파싱 실패: ${pollRes.body}`);
-      sleep(2);
-      continue;
-    }
-
-    // Front 로직과 동일: status가 없고 template_content가 있으면 완료
-    if (typeof j.status === 'undefined' && typeof j.template_content !== 'undefined') {
-      finalResult = j;
-      break;
-    }
-
-    // 아직 진행 중이면 대기
-    sleep(2);
+  } catch (e) {
+    console.warn(`[VU ${__VU}] SSE 응답 파싱 실패`);
   }
 
-  if (!finalResult) {
-    console.warn(`[VU ${__VU}] 폴링 타임아웃, 결과 없음`);
+  if (!finalResult || !finalResult.template_content) {
+    console.warn(`[VU ${__VU}] 결과 수신 실패 (타임아웃 또는 에러)`);
     return;
   }
 
@@ -163,7 +148,7 @@ export default function (data) {
 
   const variableNames = extractVariablesFromTemplate(templateContent);
 
-  // 3) 백엔드에 1차 저장 요청 (/api/template/create)
+  // 2) 백엔드에 1차 저장 요청 (/api/template/create)
   const variableList = variableNames.map((name) => ({
     variableKey: name,
   }));
