@@ -31,3 +31,4 @@ flake8
 pytest
 celery
 redis
+flower
