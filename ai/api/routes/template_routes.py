@@ -4,7 +4,10 @@ import json
 import logging
 from typing import List, Dict
 
-from fastapi import APIRouter, HTTPException, Depends, status
+import redis
+import redis.asyncio as redis_async
+from fastapi import APIRouter, HTTPException, Depends, status, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from openai import OpenAIError
@@ -17,6 +20,7 @@ from templateEngine.pipeline import run_template_generation_pipeline
 from core.database import get_db, SessionLocal
 from templateEngine.prompts.message_analyzer_prompts import PromptDefense
 from templateEngine.prompts.builders import SuitabilityCheckPromptBuilder
+from core.config import settings
 
 router = APIRouter(prefix="/template", tags=["Template Generation"])
 logger = logging.getLogger(__name__)
@@ -106,6 +110,15 @@ def run_pipeline_task(self, user_message: str) -> dict:
     try:
         # Since _run_full_pipeline is async, run it in a new event loop
         result = asyncio.run(_run_full_pipeline(user_message, db_session))
+
+        # [Redis Pub/Sub] 작업 완료 시 결과 발행 (Publish)
+        # config의 설정을 사용하여 Redis 연결
+        try:
+            with redis.from_url(settings.CELERY_BROKER_URL) as r:
+                r.publish(f"task_result:{self.request.id}", json.dumps(result, default=str))
+        except Exception as e:
+            logger.error(f"Redis publish failed for task {self.request.id}: {e}")
+
         return result
     except Exception as e:
         logger.error(f"Task {self.request.id} failed: {e}", exc_info=True)
@@ -137,6 +150,70 @@ async def generate_template_endpoint(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail="템플릿 생성 요청 중 오류가 발생했습니다.")
 
+
+@router.get("/generate/stream", summary="SSE Template Generation (Redis Pub/Sub)")
+async def generate_template_stream(
+    userMessage: str = Query(..., description="사용자 요청 메시지")
+):
+    """
+    Redis Pub/Sub을 활용한 이벤트 기반 SSE 스트리밍.
+    서버 리소스를 점유하는 폴링 없이, Celery 작업 완료 신호를 즉시 받아 응답합니다.
+    """
+    async def event_stream():
+        redis_client = None
+        pubsub = None
+        try:
+            # 1. Celery 작업 등록
+            sanitize_userMessage = PromptDefense.sanitize_user_input(userMessage)
+            task = run_pipeline_task.delay(user_message=sanitize_userMessage)
+
+            # 2. Redis 채널 구독 (Subscribe)
+            # config의 설정을 사용하여 Redis 연결
+            redis_client = redis_async.from_url(settings.CELERY_BROKER_URL)
+            pubsub = redis_client.pubsub()
+            channel_name = f"task_result:{task.id}"
+            await pubsub.subscribe(channel_name)
+
+            # 대기 시작 알림
+            yield f"data: {json.dumps({'status': 'QUEUED', 'task_id': task.id})}\n\n"
+
+            # 3. 메시지 대기 (이벤트 루프를 차단하지 않음)
+            async for message in pubsub.listen():
+                if message['type'] == 'message':
+                    data_str = message['data']
+                    if isinstance(data_str, bytes):
+                        data_str = data_str.decode('utf-8')
+
+                    result_data = json.loads(data_str)
+
+                    if not result_data.get("pipeline_success", False):
+                        error_msg = result_data.get("error_message", "생성 실패")
+                        yield f"data: {json.dumps({'status': 'FAILURE', 'error': error_msg}, ensure_ascii=False)}\n\n"
+                    else:
+                        response_data = {
+                            "status": "SUCCESS",
+                            "template_content": result_data.get("template_text", ""),
+                            "variables": [
+                                {"name": var, "type": "string", "description": f"변수: {var}"}
+                                for var in result_data.get("variables", [])
+                            ],
+                            "category": result_data.get("category_sub") or "기타",
+                            "model": "gpt-4o-mini",
+                            "template_title": result_data.get("template_title", ""),
+                            "generation_method": result_data.get("generation_method", ""),
+                            "similarity_score": result_data.get("similarity_score", 0.0)
+                        }
+                        yield f"data: {json.dumps(response_data, ensure_ascii=False)}\n\n"
+                    break  # 결과 전송 후 루프 종료
+
+        except Exception as e:
+            logger.error(f"SSE Error: {e}", exc_info=True)
+            yield f"data: {json.dumps({'status': 'ERROR', 'error': str(e)})}\n\n"
+        finally:
+            if pubsub: await pubsub.unsubscribe()
+            if redis_client: await redis_client.close()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 @router.get("/generate/task/{task_id}", tags=["Template Generation Status"])
 async def get_generation_task_status(
