@@ -8,6 +8,9 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: ${DB_DRIVER}
+    hikari:
+      maximum-pool-size: 150  # 500 VU 부하 시 커넥션 대기 완화 (동시 요청 수보다 작으면 대기 발생)
+      connection-timeout: 30000
 
   # flyway 마이그레이션 설정
   flyway:
@@ -55,6 +58,11 @@ server:
   port: 8080
   servlet:
     context-path: /
+  tomcat:
+    threads:
+      max: 500   # 500 VU 부하 시 요청 대기 방지 (기본 200)
+    max-connections: 10000
+    accept-count: 500
 
 # 로깅 설정
 logging:
