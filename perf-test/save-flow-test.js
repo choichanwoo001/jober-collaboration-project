@@ -12,7 +12,7 @@ export const options = {
   stages: [
     { duration: '30s', target: 10 },   // 워밍업
     { duration: '1m', target: 50 },    // 중간 부하
-    { duration: '1m', target: 100 },   // 고부하
+    { duration: '1m', target: 500 },   // 고부하
     { duration: '30s', target: 0 },    // 종료
   ],
   thresholds: {
