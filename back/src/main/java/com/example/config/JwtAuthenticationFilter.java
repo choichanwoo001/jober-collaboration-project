@@ -1,5 +1,6 @@
 package com.example.config;
 
+import com.example.repository.AccountRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,6 +26,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
     private final TokenService tokenService;
     private final AccountCacheService accountCacheService;
+    private final AccountRepository accountRepository;
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, 
@@ -69,6 +71,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 캐시를 통해 Account 엔티티 조회 (상태 확인)
         // Redis 캐싱으로 DB 조회 부하 감소 - 매 요청마다 DB 조회하던 문제 해결
         Account account = accountCacheService.getAccountById(accountId);
+        //Account account = accountRepository.findById(accountId).orElse(null);
         if (account == null) {
             logAuthenticationFailure(requestURI, "계정을 찾을 수 없음 - ID: " + accountId);
             filterChain.doFilter(request, response);

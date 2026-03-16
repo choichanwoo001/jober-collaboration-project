@@ -25,6 +25,12 @@ public class Category {
     @Column(name = "name", nullable = false, length = 100)
     private String name;
 
+    @Column(name = "description")
+    private String description;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 

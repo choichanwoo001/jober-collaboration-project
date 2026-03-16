@@ -5,7 +5,7 @@ from core.database import Base
 class Category(Base):
     __tablename__ = "category"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    category_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(50), unique=True, index=True, nullable=False)
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
