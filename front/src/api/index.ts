@@ -155,9 +155,42 @@ const convertToStringArray = (variableList: string[]): Array<{variableKey: strin
 
 // 템플릿 관련 API
 export const templateApi = {
-  // AI를 통한 템플릿 생성 (AI 서버 직접 호출)
-  generateTemplate: (userMessage: string) => 
-    aiApi.post('/template/generate', { userMessage }),
+  // AI를 통한 템플릿 생성 (AI 서버 직접 호출 및 폴링)
+  generateTemplate: async (userMessage: string) => {
+    // 1. 작업 생성 요청
+    const initialResponse = await aiApi.post('/template/generate', { userMessage });
+    const taskId = initialResponse.data.task_id;
+
+    if (!taskId) {
+      throw new Error('Failed to get task ID for template generation.');
+    }
+
+    // 2. 결과 폴링
+    return new Promise((resolve, reject) => {
+        const intervalId = setInterval(async () => {
+            try {
+                const statusResponse = await aiApi.get(`/template/generate/task/${taskId}`);
+                const responseData = statusResponse.data;
+
+                // 성공: status 필드가 없고, template_content 필드가 있음
+                if (responseData && typeof responseData.status === 'undefined' && typeof responseData.template_content !== 'undefined') {
+                    clearInterval(intervalId);
+                    // The component expects the whole response object.
+                    resolve(statusResponse);
+                }
+                // 실패
+                else if (responseData.status === 'FAILURE') {
+                    clearInterval(intervalId);
+                    reject(new Error(responseData.result || 'Template generation failed.'));
+                }
+                // 아직 진행 중... (PENDING, STARTED 등)
+            } catch (error) {
+                clearInterval(intervalId);
+                reject(error);
+            }
+        }, 2000); // 2초마다 폴링
+    });
+  },
   
   // 템플릿 검증 (백엔드 API를 통해)
   validateTemplate: (templateContent: string, variableList: string[], category?: string, userMessage?: string, templateTitle?: string, templateId?: string) => {
