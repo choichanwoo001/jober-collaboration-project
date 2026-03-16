@@ -10,11 +10,18 @@ import com.example.event.CategoryUsageIncrementEvent;
 import com.example.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.*;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 템플릿 생성 및 관리를 위한 비즈니스 로직을 처리하는 서비스입니다.
@@ -30,6 +37,10 @@ public class TemplateService {
     private final AccountRepository accountRepository;
     private final AIService aiService; // FastAPI 통신을 전담할 서비스 주입
     private final TemplateVariableResolver variableResolver; // 변수 처리 유틸리티
+
+    @Lazy
+    @Autowired
+    private TemplateService self; // 커밋 후 별도 트랜잭션 호출용 (데드락 방지)
 
     /**
      * 템플릿을 생성하거나 업데이트합니다 (upsert).
@@ -60,10 +71,43 @@ public class TemplateService {
 
         Template saved = templateRepository.save(template);
 
-        // 카테고리 사용량 증가는 부가 지표이므로, 커밋 이후 별도 처리(best-effort)
-        eventPublisher.publishEvent(new CategoryUsageIncrementEvent(dto.getCategory()));
+        // 카테고리 사용량 증가는 커밋 후 비동기로 수행 (요청 스레드가 추가 커넥션을 기다리지 않아 풀 고갈 방지)
+        String categoryName = dto.getCategory();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        self.scheduleIncrementCategoryUsageCount(categoryName);
+                    } catch (RejectedExecutionException e) {
+                        // 실행기 포화 시 요청은 성공 처리하고, 사용량 증가만 스킵 (500 방지)
+                        log.debug("카테고리 사용량 증가 스킵 (executor busy): {}", categoryName);
+                    }
+                }
+            });
+        } else {
+            incrementCategoryUsageCount(categoryName);
+        }
+
         log.info("Template upsert 완료: id={}", saved.getTemplateId());
         return TemplateSaveResponseDto.success(saved.getTemplateId().toString());
+    }
+
+    /**
+     * 커밋 후 비동기로 카테고리 사용량을 증가시킵니다.
+     * 요청 스레드에서 추가 커넥션을 쓰지 않아 Hikari 풀 고갈을 방지합니다.
+     */
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void scheduleIncrementCategoryUsageCount(String categoryName) {
+        try {
+            int updated = categoryRepository.incrementUsageCountByName(categoryName != null ? categoryName.trim() : "");
+            if (updated > 0) {
+                log.debug("카테고리 사용량 증가: {}", categoryName);
+            }
+        } catch (Exception e) {
+            log.warn("카테고리 사용량 증가 실패 (무시): {}", categoryName, e);
+        }
     }
 
     /**

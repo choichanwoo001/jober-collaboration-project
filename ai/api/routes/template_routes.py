@@ -4,6 +4,7 @@ import json
 import logging
 from typing import List, Dict
 
+import os
 import redis
 import redis.asyncio as redis_async
 from fastapi import APIRouter, HTTPException, Depends, status, Query
@@ -40,7 +41,6 @@ class GenerationResponse(BaseModel):
     generation_method: str
     similarity_score: float
 
-
 class GenerationTaskResponse(BaseModel):
     task_id: str
     message: str
@@ -48,7 +48,22 @@ class GenerationTaskResponse(BaseModel):
 
 # --- Celery 작업 ---
 async def _run_full_pipeline(user_message: str, db_session: Session) -> dict:
-    """Helper async function that includes suitability check and pipeline execution."""
+    """
+    LangGraph 기반의 지능형 템플릿 생성 파이프라인을 실행합니다.
+    MOCK_OPENAI=1 이면 OpenAI 호출 없이 더미 응답 반환 (k6 등 부하 테스트용).
+    """
+    # k6/부하 테스트 시 API 한도 소진 방지: mock 모드면 즉시 더미 200 반환
+    if os.getenv("MOCK_OPENAI", "").lower() in ("1", "true", "yes"):
+        return GenerationResponse(
+            template_content="[MOCK] 부하 테스트용 더미 템플릿입니다.",
+            variables=[{"name": "고객명", "type": "string", "description": "변수: 고객명"}],
+            category="기타",
+            model="gpt-4o-mini",
+            template_title="[MOCK] 테스트 제목",
+            generation_method="mock",
+            similarity_score=0.0,
+        )
+    
     openai_service = OpenAIService()
     chromadb_service = ChromaDBService()
     
