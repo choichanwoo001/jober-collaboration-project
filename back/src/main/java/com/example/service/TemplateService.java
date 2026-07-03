@@ -2,14 +2,26 @@ package com.example.service;
 
 import com.example.dto.*;
 import com.example.entity.*;
-import com.example.exception.ResourceNotFoundException;
+import com.example.exception.template.TemplateErrorCode;
+import com.example.exception.template.TemplateException;
+import com.example.exception.user.UserErrorCode;
+import com.example.exception.user.UserException;
+import com.example.event.CategoryUsageIncrementEvent;
 import com.example.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.*;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 템플릿 생성 및 관리를 위한 비즈니스 로직을 처리하는 서비스입니다.
@@ -21,62 +33,131 @@ public class TemplateService {
 
     private final TemplateRepository templateRepository;
     private final CategoryRepository categoryRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final AccountRepository accountRepository;
     private final AIService aiService; // FastAPI 통신을 전담할 서비스 주입
+    private final TemplateVariableResolver variableResolver; // 변수 처리 유틸리티
 
+    @Lazy
+    @Autowired
+    private TemplateService self; // 커밋 후 별도 트랜잭션 호출용 (데드락 방지)
 
-    // 수정에서 제출하기 버튼 클릭 시 템플릿 저장
+    /**
+     * 템플릿을 생성하거나 업데이트합니다 (upsert).
+     * templateId가 null이면 신규 생성, 있으면 업데이트합니다.
+     */
     @Transactional
-    public TemplateSaveResponseDto saveTemplate(TemplateSaveRequestDto requestDto, UserDto currentUser) {
-        try {
-            // 사용자 계정 조회
-            Account account = accountRepository.findById(currentUser.getAccountId())
-                    .orElseThrow(() -> new ResourceNotFoundException("사용자를 찾을 수 없습니다."));
+    public TemplateSaveResponseDto upsertTemplate(TemplateSaveRequestDto dto, UserDto user) {
+        log.info("Template upsert: id={}, accountId={}, category={}",
+                dto.getTemplateId(), user.getAccountId(), dto.getCategory());
 
-            // 카테고리 조회
-            Category category = findCategoryByName(requestDto.getCategory());
+        Account account = accountRepository.findById(user.getAccountId())
+                .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
 
-            // Template 생성
-            Template template = Template.builder()
-                    .account(account)
-                    .templateContent(requestDto.getTemplateContent())
-                    .category(category)
-                    .userMessage(requestDto.getUserMessage()) // 사용자 원본 요청 저장
-                    .autoTitle(requestDto.getTemplateTitle()) // 템플릿 제목 저장
-                    .status("검증 중")
-                    .build();
+        Template template = (dto.getTemplateId() == null)
+                ? Template.builder().account(account).status("임시 저장").build()
+                : templateRepository.findById(dto.getTemplateId())
+                        .orElseThrow(() -> new TemplateException(TemplateErrorCode.TEMPLATE_NOT_FOUND));
 
-            if (requestDto.getVariableList() != null && !requestDto.getVariableList().isEmpty()) {
-                // 딕셔너리 배열에서 유효한 변수만 필터링
-                List<Map<String, String>> validVariables = requestDto.getVariableList().stream()
-                        .filter(variableMap -> variableMap != null && 
-                                variableMap.get("variableKey") != null && 
-                                !variableMap.get("variableKey").trim().isEmpty())
-                        .toList();
-                
-                if (!validVariables.isEmpty()) {
-                    for (Map<String, String> variableMap : validVariables) {
-                        String variableKey = variableMap.get("variableKey").trim(); // 앞뒤 공백 제거
-                        Var variable = Var.builder()
-                            .variableKey(variableKey)
-                            .build();
-                        template.addVariable(variable);
+        // 소유권 체크는 update일 때만
+        if (dto.getTemplateId() != null && !template.getAccount().getId().equals(user.getAccountId())) {
+            throw new TemplateException(TemplateErrorCode.TEMPLATE_OWNERSHIP_MISMATCH);
+        }
+
+        Category category = findCategoryByName(dto.getCategory());
+
+        applyTemplateFields(template, dto, category, dto.getTemplateId() == null);
+        syncVariables(template, dto);
+
+        Template saved = templateRepository.save(template);
+
+        // 카테고리 사용량 증가는 커밋 후 비동기로 수행 (요청 스레드가 추가 커넥션을 기다리지 않아 풀 고갈 방지)
+        String categoryName = dto.getCategory();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        self.scheduleIncrementCategoryUsageCount(categoryName);
+                    } catch (RejectedExecutionException e) {
+                        // 실행기 포화 시 요청은 성공 처리하고, 사용량 증가만 스킵 (500 방지)
+                        log.debug("카테고리 사용량 증가 스킵 (executor busy): {}", categoryName);
                     }
                 }
-            }
-
-            // DB 저장
-            Template savedTemplate = templateRepository.save(template);
-            
-            // 카테고리 사용량 증가
-            incrementCategoryUsageCount(requestDto.getCategory());
-            
-
-            return TemplateSaveResponseDto.success(savedTemplate.getTemplateId().toString());
-        } catch (Exception e) {
-            log.error("템플릿 저장 중 오류 발생", e);
-            return TemplateSaveResponseDto.failure("템플릿 저장 중 오류가 발생했습니다: "+e.getMessage());
+            });
+        } else {
+            incrementCategoryUsageCount(categoryName);
         }
+
+        log.info("Template upsert 완료: id={}", saved.getTemplateId());
+        return TemplateSaveResponseDto.success(saved.getTemplateId().toString());
+    }
+
+    /**
+     * 커밋 후 비동기로 카테고리 사용량을 증가시킵니다.
+     * 요청 스레드에서 추가 커넥션을 쓰지 않아 Hikari 풀 고갈을 방지합니다.
+     */
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void scheduleIncrementCategoryUsageCount(String categoryName) {
+        try {
+            int updated = categoryRepository.incrementUsageCountByName(categoryName != null ? categoryName.trim() : "");
+            if (updated > 0) {
+                log.debug("카테고리 사용량 증가: {}", categoryName);
+            }
+        } catch (Exception e) {
+            log.warn("카테고리 사용량 증가 실패 (무시): {}", categoryName, e);
+        }
+    }
+
+    /**
+     * 템플릿 필드를 업데이트합니다.
+     */
+    private void applyTemplateFields(Template template, TemplateSaveRequestDto dto, Category category, boolean isCreate) {
+        template.setTemplateContent(dto.getTemplateContent());
+        template.setCategory(category);
+        template.setUserMessage(dto.getUserMessage());
+        template.setAutoTitle(dto.getTemplateTitle());
+        template.setStatus(isCreate ? "임시 저장" : "검증 중");
+    }
+
+    /**
+     * 템플릿의 변수를 동기화합니다.
+     * 템플릿에 실제로 사용된 변수만 저장합니다.
+     */
+    private void syncVariables(Template template, TemplateSaveRequestDto dto) {
+        Set<String> actual = variableResolver.extractActualVariables(dto.getTemplateContent());
+        List<String> keys = variableResolver.resolveKeys(dto.getVariableList());
+        List<String> used = variableResolver.filterOnlyUsed(keys, actual);
+
+        log.debug("VariableList raw size={}", dto.getVariableList() != null ? dto.getVariableList().size() : 0);
+        log.info("Resolved vars: actual={}, requested={}, used={}", actual.size(), keys.size(), used.size());
+
+        template.replaceVariables(used);
+    }
+
+    /**
+     * 템플릿 신규 생성 (1차 저장용)
+     * @deprecated upsertTemplate을 사용하세요
+     */
+    @Deprecated
+    @Transactional
+    public TemplateSaveResponseDto createTemplate(TemplateSaveRequestDto requestDto, UserDto currentUser) {
+        return upsertTemplate(requestDto, currentUser);
+    }
+
+    /**
+     * 템플릿 업데이트 (최종 저장용)
+     * templateId 필수
+     * @deprecated upsertTemplate을 사용하세요
+     */
+    @Deprecated
+    @Transactional
+    public TemplateSaveResponseDto saveTemplate(TemplateSaveRequestDto requestDto, UserDto currentUser) {
+        if (requestDto.getTemplateId() == null) {
+            throw new TemplateException(TemplateErrorCode.TEMPLATE_ID_REQUIRED);
+        }
+        return upsertTemplate(requestDto, currentUser);
     }
 
 
@@ -87,7 +168,6 @@ public class TemplateService {
     @Transactional
     public TemplateValidationResponseDto validateTemplate(TemplateValidationRequestDto requestDto, UserDto currentUser) {
         try {
-
             // AI 서버로 검증 요청
             Map<String, Object> validationRequest = new HashMap<>();
             validationRequest.put("user_input", requestDto.getTemplateContent());
@@ -151,23 +231,18 @@ public class TemplateService {
             
             return response;
 
+        } catch (com.example.exception.external.ExternalApiException e) {
+            // AI 장애/타임아웃은 그대로 전파 -> GlobalExceptionHandler가 처리
+            throw e;
+
         } catch (Exception e) {
             log.error("템플릿 검증 중 오류 발생", e);
-            throw new RuntimeException("템플릿 검증 중 오류가 발생했습니다: " + e.getMessage());
+            // 여기서도 가능하면 BusinessException 계열로 변환하거나,
+            // 최소한 메시지 덜어내고 공통 처리
+            throw new RuntimeException("템플릿 검증 중 서버 오류가 발생했습니다.");
         }
     }
 
-    private boolean isValidationSuccessful(Map<String, Object> aiValidationResult) {
-        Object success = aiValidationResult.get("success");
-        if (success instanceof Boolean) {
-            return (Boolean) success;
-        }
-        Object isValid = aiValidationResult.get("is_valid");
-        if (isValid instanceof Boolean) {
-            return (Boolean) isValid;
-        }
-        return false;
-    }
 
     // 검증에서 저장 기능 제거됨 - 수정에서만 저장
     // private TemplateValidationResponseDto handleApproval(TemplateValidationRequestDto requestDto, UserDto currentUser) {
@@ -346,12 +421,12 @@ public class TemplateService {
      * 주어진 ID로 Category 엔티티를 조회합니다.
      * @param categoryId 조회할 Category의 ID
      * @return 조회된 Category 엔티티
-     * @throws ResourceNotFoundException 해당 ID의 Category가 존재하지 않을 경우
+     * @throws TemplateException 해당 ID의 Category가 존재하지 않을 경우 (CATEGORY_INVALID)
      */
     @Transactional(readOnly = true)
     public Category findCategoryById(Long categoryId) {
         return categoryRepository.findById(categoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found with id: " + categoryId));
+                .orElseThrow(() -> new TemplateException(TemplateErrorCode.CATEGORY_INVALID));
     }
 
     /**
@@ -362,7 +437,8 @@ public class TemplateService {
     public Category findCategoryByName(String categoryName) {
         // 카테고리 이름 유효성 검사
         if (categoryName == null || categoryName.trim().isEmpty()) {
-            throw new IllegalArgumentException("카테고리 이름이 비어있습니다.");
+            log.warn("템플릿 처리 중 잘못된 카테고리 이름 입력: '{}'", categoryName);
+            throw new TemplateException(TemplateErrorCode.CATEGORY_INVALID);
         }
         
         // 앞뒤 공백 제거하여 정규화
@@ -382,24 +458,9 @@ public class TemplateService {
                         return savedCategory;
                     } catch (Exception e) {
                         log.error("새로운 카테고리 생성 실패: {}", trimmedCategoryName, e);
-                        throw new RuntimeException("카테고리 생성 중 오류가 발생했습니다: " + e.getMessage(), e);
+                        throw new TemplateException(TemplateErrorCode.CATEGORY_CREATE_FAILED);
                     }
                 });
-    }
-
-    /**
-     * 카테고리 사용량을 증가시킵니다.
-     */
-    @Transactional
-    public void incrementCategoryUsageCount(String categoryName) {
-        try {
-            Category category = findCategoryByName(categoryName);
-            category.setUsageCount(category.getUsageCount() + 1);
-            categoryRepository.save(category);
-            log.info("카테고리 사용량 증가: {} (현재 사용량: {})", categoryName, category.getUsageCount());
-        } catch (Exception e) {
-            log.error("카테고리 사용량 증가 실패: {}", categoryName, e);
-        }
     }
 
     /**

@@ -59,3 +59,8 @@ back/out/
 back/bin/
 back/*.log
 back/.env
+**/application-local.yml
+
+# ---------- Redis ----------
+dump.rdb
+*.rdb

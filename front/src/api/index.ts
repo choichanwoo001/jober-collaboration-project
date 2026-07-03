@@ -57,10 +57,17 @@ api.interceptors.response.use(
     return response
   },
   async (error) => {
-    // 401, 403 에러 시 자동 로그아웃
-    if (error.response?.status === 401 ) {
+    // 401, 403 에러 시 자동 로그아웃 (토큰 만료 등)
+    if (error.response?.status === 401 || error.response?.status === 403) {
       const userStore = useUserStore()
+      console.warn('인증 실패 - 토큰이 만료되었거나 유효하지 않습니다. 로그아웃합니다.')
       userStore.logout()
+      
+      // 로그인 페이지로 리다이렉트 (현재 페이지가 로그인 페이지가 아닌 경우)
+      if (window.location.pathname !== '/login') {
+        alert('세션이 만료되었습니다. 다시 로그인해주세요.')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }
@@ -148,9 +155,42 @@ const convertToStringArray = (variableList: string[]): Array<{variableKey: strin
 
 // 템플릿 관련 API
 export const templateApi = {
-  // AI를 통한 템플릿 생성 (AI 서버 직접 호출)
-  generateTemplate: (userMessage: string) => 
-    aiApi.post('/template/generate', { userMessage }),
+  // AI를 통한 템플릿 생성 (AI 서버 직접 호출 및 폴링)
+  generateTemplate: async (userMessage: string) => {
+    // 1. 작업 생성 요청
+    const initialResponse = await aiApi.post('/template/generate', { userMessage });
+    const taskId = initialResponse.data.task_id;
+
+    if (!taskId) {
+      throw new Error('Failed to get task ID for template generation.');
+    }
+
+    // 2. 결과 폴링
+    return new Promise((resolve, reject) => {
+        const intervalId = setInterval(async () => {
+            try {
+                const statusResponse = await aiApi.get(`/template/generate/task/${taskId}`);
+                const responseData = statusResponse.data;
+
+                // 성공: status 필드가 없고, template_content 필드가 있음
+                if (responseData && typeof responseData.status === 'undefined' && typeof responseData.template_content !== 'undefined') {
+                    clearInterval(intervalId);
+                    // The component expects the whole response object.
+                    resolve(statusResponse);
+                }
+                // 실패
+                else if (responseData.status === 'FAILURE') {
+                    clearInterval(intervalId);
+                    reject(new Error(responseData.result || 'Template generation failed.'));
+                }
+                // 아직 진행 중... (PENDING, STARTED 등)
+            } catch (error) {
+                clearInterval(intervalId);
+                reject(error);
+            }
+        }, 2000); // 2초마다 폴링
+    });
+  },
   
   // 템플릿 검증 (백엔드 API를 통해)
   validateTemplate: (templateContent: string, variableList: string[], category?: string, userMessage?: string, templateTitle?: string, templateId?: string) => {
@@ -189,20 +229,35 @@ export const templateApi = {
     return api.post('/template/modify', modificationRequest)
   },
 
-  // 템플릿 저장 (검증 없이 바로 저장)
-  saveTemplate: (templateContent: string, variableList: string[], category: string, userMessage: string, templateTitle: string) => {
+  // 템플릿 신규 생성 (1차 저장용)
+  createTemplate: (templateContent: string, variableList: string[], category: string, userMessage: string, templateTitle: string) => {
     // variableList를 딕셔너리 배열로 변환
     const variableDictList = convertToStringArray(variableList)
 
-    const saveRequest = {
+    const createRequest: any = {
       templateContent: templateContent,
       variableList: variableDictList,  // 딕셔너리 배열로 전달
-
       category: category,
       userMessage: userMessage,
       templateTitle: templateTitle
     }
 
+    return api.post('/template/create', createRequest)
+  },
+
+  // 템플릿 업데이트 (최종 저장용, templateId 필수)
+  saveTemplate: (templateContent: string, variableList: string[], category: string, userMessage: string, templateTitle: string, templateId: string) => {
+    // variableList를 딕셔너리 배열로 변환
+    const variableDictList = convertToStringArray(variableList)
+
+    const saveRequest: any = {
+      templateContent: templateContent,
+      variableList: variableDictList,  // 딕셔너리 배열로 전달
+      category: category,
+      userMessage: userMessage,
+      templateTitle: templateTitle,
+      templateId: templateId  // templateId 필수
+    }
 
     return api.post('/template/save', saveRequest)
   },

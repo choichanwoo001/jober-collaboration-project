@@ -19,6 +19,7 @@ public class MyPageDto {
     // 프로필 수정 (이름/전화)
     @Getter @Setter
     public static class UpdateNameRequest {
+        @NotBlank(message = "이름은 비어있을 수 없습니다.")
         private String name;
     }
 

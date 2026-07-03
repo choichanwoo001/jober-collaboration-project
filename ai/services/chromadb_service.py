@@ -41,20 +41,45 @@ class ChromaDBService:
                 self.client = chromadb.PersistentClient(path=persist_dir)
                 logger.info(f"✅ 로컬 ChromaDB 연결 성공: {persist_dir}")
 
-            required_collections = [
-                "approved_templates",
-                "public_templates",   # 오타 pulblic → public
-                "denied_templates",
-                "blacklist",
-                "rejection_reasons",  # 반려 사유 컬렉션 추가
-            ]
-            for col in required_collections:
-                self.collections[col] = self.client.get_or_create_collection(col)
-                logger.info(f"✅ 컬렉션 준비 완료: {col}")
+            self._reload_collections()
         except Exception as e:
             logger.error(f"❌ ChromaDB 연결 또는 컬렉션 로드 실패: {e}", exc_info=True)
             self.client = None
             self.is_mock = True
+
+    def _reload_collections(self):
+        """클라이언트 재연결 시 컬렉션 객체도 새로고침"""
+        if not self.client:
+            return
+
+        required_collections = [
+            "approved_templates",
+            "public_templates",
+            "denied_templates",
+            "blacklist",
+            "rejection_reasons",
+        ]
+        self.collections = {}
+        for col in required_collections:
+            try:
+                self.collections[col] = self.client.get_or_create_collection(col)
+                logger.info(f"✅ 컬렉션 준비 완료: {col}")
+            except Exception as e:
+                logger.error(f"❌ 컬렉션 로드 실패 ({col}): {e}")
+
+    def _ensure_connection(self):
+        """연결 상태 확인 및 필요 시 재연결 (Lazy Reconnect)"""
+        if not HAS_CHROMADB:
+            return
+
+        try:
+            if self.client:
+                self.client.heartbeat()
+                return
+        except Exception:
+            logger.warning("⚠️ ChromaDB Heartbeat 실패. 재연결을 시도합니다...")
+        
+        self._connect()
         
     async def initialize(self):
         """
@@ -86,46 +111,39 @@ class ChromaDBService:
             List[Dict]: 검색된 템플릿 리스트 (유사도 기준 정렬됨)
         """
 
-        # 컬렉션 선택
-        if collection_name == "approved_templates":
-            collection = self.collections.get("approved_templates")
-            logger.info("  - 검색 대상: 승인된 템플릿")
-        elif collection_name == "public_templates":
-            collection = self.collections.get("public_templates")
-            logger.info("  - 검색 대상: 공용 템플릿")
-        elif collection_name == "denied_templates":
-            collection = self.collections.get("denied_templates")
-            logger.info("  - 검색 대상: 반려된 템플릿")
-        elif collection_name == "rejection_reasons":
-            collection = self.collections.get("rejection_reasons")
-            logger.info("  - 검색 대상: 반려 사유")
-        else:
-            logger.error(f"❌ 알 수 없는 컬렉션: {collection_name}")
-            return []
-        
-        if not collection:
-            logger.warning(f"⚠️ '{collection_name}' 컬렉션이 없습니다.")
-            return []
-        
-        try:
-            # 카테고리 필터링 조건 (approved_templates에서만 사용)
-            where_condition = None
-            if collection_name == "approved_templates" and category_sub is not None:
-                where_condition = {"category_sub": category_sub}
+        # Retry 로직 (총 2회 시도)
+        for attempt in range(2):
+            try:
+                # 1. 연결 확인
+                self._ensure_connection()
+
+                # 2. 컬렉션 객체 가져오기 (재연결 시 갱신된 객체를 가져오기 위해 루프 내부에서 수행)
+                collection = self.collections.get(collection_name)
+                
+                if not collection:
+                    if attempt == 0: # 첫 시도에 없으면 재연결 시도
+                        logger.warning(f"⚠️ '{collection_name}' 컬렉션이 없습니다. 재연결 시도 중...")
+                        self._connect()
+                        continue
+                    logger.error(f"❌ '{collection_name}' 컬렉션을 찾을 수 없습니다.")
+                    return []
+
+                # 3. 쿼리 실행
+                # 카테고리 필터링 조건 (approved_templates에서만 사용)
+                where_condition = None
+                if collection_name == "approved_templates" and category_sub is not None:
+                    where_condition = {"category_sub": category_sub}
+
+                results = collection.query(
+                    query_texts=[query_text],
+                    n_results=top_k,
+                    where=where_condition,
+                    include=['documents', 'metadatas', 'distances']
+                )
             
-            # 쿼리 실행
-            results = collection.query(
-                query_texts=[query_text],
-                n_results=top_k,
-                where=where_condition,
-                include=['documents', 'metadatas', 'distances']
-            )
+                # 4. 결과 처리 (성공 시 바로 리턴)
+                templates = []
             
-            templates = []
-            
-            # 결과 처리
-            if results and results['ids'] and results['ids'][0]:
-                ids = results['ids'][0]
                 documents = results['documents'][0] if results['documents'] else []
                 metadatas = results['metadatas'][0] if results['metadatas'] else []
                 distances = results['distances'][0] if results['distances'] else []
@@ -159,9 +177,15 @@ class ChromaDBService:
                 # 유사도 기준으로 정렬
                 templates.sort(key=lambda x: x['similarity'], reverse=True)
             
-            return templates
-                
-        except Exception as e:
-            logger.error(f"❌ {collection_name} 검색 중 오류: {e}", exc_info=True)
-            return []
+                return templates
 
+            except Exception as e:
+                logger.warning(f"⚠️ ChromaDB 쿼리 실패 (시도 {attempt+1}/2): {e}")
+                if attempt == 1:  # 마지막 시도였으면 에러 로그 남기고 종료
+                    logger.error(f"❌ {collection_name} 검색 최종 실패", exc_info=True)
+                    return []
+                
+                # 재시도 전 연결 복구 시도
+                self._connect()
+        
+        return []

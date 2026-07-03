@@ -2,11 +2,16 @@ package com.example.service;
 
 import com.example.dto.FastAPIResponseDto;
 import com.example.dto.TemplateRequestDto;
+import com.example.exception.external.ExternalApiException;
+import com.example.exception.external.ExternalErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+
 import java.util.Map;
 
 
@@ -52,7 +57,8 @@ public class AIService {
             aiRequest.put("variableList", validationRequest.get("variableList"));
             
             log.info("AI 서버로 전송할 요청: {}", aiRequest);
-            
+
+            // FastAPI 정상 응답을 받아 그대로 TemplateService에 넘김
             @SuppressWarnings("unchecked")
             Map<String, Object> result = webClient.post()
                     .uri("/alimtalk/validate")
@@ -61,17 +67,32 @@ public class AIService {
                     .retrieve()
                     .bodyToMono(Map.class)
                     .block();
-            
-            log.info("AI 서버 검증 응답: {}", result);
+
+            if (result == null || result.isEmpty()) {
+                throw new ExternalApiException(ExternalErrorCode.AI_RESPONSE_INVALID); // 없으면 AI_SERVER_ERROR로
+            }
+
             return result;
+
+            // FastAPI에서 4xx/5xx 반환한 경우
+        } catch (WebClientResponseException e) {
+            log.error("[AI] FastAPI validate 에러 응답. status={}, body={}",
+                    e.getStatusCode(), e.getResponseBodyAsString(), e);
+            throw new ExternalApiException(ExternalErrorCode.AI_SERVER_ERROR);
+
+            // 네트워크 장애 및 타임아웃 (서버 다운 포함)
+        } catch (WebClientRequestException e) {
+            log.error("[AI] FastAPI validate 네트워크/타임아웃 오류", e);
+            throw new ExternalApiException(ExternalErrorCode.AI_SERVER_TIMEOUT);
+
+            // 우리가 직접 던진 외부 예외는 그대로 전파
+        } catch (ExternalApiException e) {
+            throw e;
+
+            // 기타 예상 못한 모든 오류 → 일반 AI 서버 오류로 처리
         } catch (Exception e) {
-            log.error("FastAPI 템플릿 검증 요청 실패", e);
-            // 검증 실패 시 기본 반려 응답 반환
-            return Map.of(
-                "success", false,
-                "rejected_variables", java.util.List.of("템플릿 내용"),
-                "alternatives", Map.of("템플릿 내용", java.util.List.of("더 적절한 표현으로 수정해주세요"))
-            );
+            log.error("[AI] validate 처리 중 예기치 못한 오류", e);
+            throw new ExternalApiException(ExternalErrorCode.AI_SERVER_ERROR);
         }
     }
 
@@ -122,15 +143,21 @@ public class AIService {
             log.info("변환된 응답 DTO: {}", response);
             return response;
                     
+        } catch (WebClientResponseException e) {
+        log.error("[AI] FastAPI가 에러 응답을 반환했습니다. status={}, body={}",
+                e.getStatusCode(), e.getResponseBodyAsString(), e);
+        throw new ExternalApiException(ExternalErrorCode.AI_SERVER_ERROR);
+
+        } catch (WebClientRequestException e) {
+        log.error("[AI] FastAPI 요청 중 네트워크/타임아웃 오류가 발생했습니다.", e);
+        throw new ExternalApiException(ExternalErrorCode.AI_SERVER_TIMEOUT);
+
+        } catch (ExternalApiException e) {
+        throw e; // 그대로 전파
+
         } catch (Exception e) {
-            log.error("FastAPI 템플릿 수정 요청 실패", e);
-            log.error("오류 상세 - 클래스: {}, 메시지: {}, 원인: {}", 
-                    e.getClass().getSimpleName(), e.getMessage(), e.getCause());
-            if (e.getCause() != null) {
-                log.error("원인 오류 상세 - 클래스: {}, 메시지: {}", 
-                        e.getCause().getClass().getSimpleName(), e.getCause().getMessage());
-            }
-            throw new RuntimeException("AI 서버 템플릿 수정 요청 중 오류가 발생했습니다: " + e.getMessage());
+        log.error("[AI] 템플릿 수정 처리 중 예기치 못한 오류가 발생했습니다.", e);
+        throw new ExternalApiException(ExternalErrorCode.AI_SERVER_ERROR);
         }
     }
 }
