@@ -95,6 +95,23 @@ public class  Template {
         variable.setTemplate(this);
     }
 
+    /**
+     * 기존 변수를 모두 제거하고 새로운 변수 목록으로 교체합니다.
+     * orphanRemoval=true 설정으로 인해 기존 변수들이 자동으로 삭제됩니다.
+     * 
+     * @param variableKeys 새로운 변수명 리스트
+     */
+    public void replaceVariables(List<String> variableKeys) {
+        this.variables.clear();
+        if (variableKeys != null) {
+            for (String key : variableKeys) {
+                if (key != null && !key.isBlank()) {
+                    this.addVariable(Var.builder().variableKey(key.trim()).build());
+                }
+            }
+        }
+    }
+
     // 연관관계 편의 메소드: PolicyRef를 추가할 때 Template도 함께 설정
     public void addPolicyRef(PolicyRef policyRef) {
         this.policyRefs.add(policyRef);

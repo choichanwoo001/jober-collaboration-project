@@ -125,7 +125,7 @@
                   <span v-if="!isBusy">{{ primaryLabel }}</span>
                   <span v-else class="loading-content">
                     <span class="spinner"></span>
-                    {{ stage === 'edit' ? '저장 중...' : '검증/제출 중...' }}
+                    검증/제출 중...
                   </span>
                 </button>
               </div>
@@ -188,6 +188,7 @@ const templateTitle = ref('')
 const templateVariables = ref<any[]>([])
 const templateVariableMapping = ref<Record<string, string>>({})
 const templateCategory = ref('')
+const templateId = ref<string | null>(null)
 const userMessage = ref('')
 
 // 채팅 관련 변수들
@@ -205,14 +206,13 @@ const stage = ref<Stage>(
   (router.currentRoute.value.query.stage as Stage) || 'edit'
 )
 
-// 공통 버튼 레이블/상태
-const primaryLabel = computed(() => stage.value === 'edit' ? '저장하기' : '제출하기')
-const isBusy = computed(() => stage.value === 'edit' ? isSaving.value : isValidating.value)
+// 공통 버튼 레이블/상태 - 항상 제출하기로 표시
+const primaryLabel = computed(() => '제출하기')
+const isBusy = computed(() => isValidating.value)
 
-// 공통 버튼 핸들러
+// 공통 버튼 핸들러 - 항상 제출하기로 동작
 const handlePrimary = () => {
-  if (stage.value === 'edit') return saveTemplate()
-  else return submitTemplate()
+  return submitTemplate()
 }
 
 // 정정 횟수 관리 - 세션 기반
@@ -355,8 +355,17 @@ onMounted(() => {
   // 먼저 수정 횟수를 세션에서 가져와서 설정
   const sessionCorrections = getRemainingModifications()
   remainingCorrections.value = sessionCorrections
-  
+
   const savedTemplate = sessionStorage.getItem('generatedTemplate')
+  const storedTemplateId = sessionStorage.getItem('templateId')
+
+  if (!storedTemplateId) {
+    alert('템플릿 ID가 없습니다. 다시 생성해주세요.')
+    router.push('/')
+    return
+  }
+
+  templateId.value = storedTemplateId
   if (savedTemplate) {
     try {
       const generatedTemplate = JSON.parse(savedTemplate)
@@ -1186,18 +1195,84 @@ watch([templateContent, templateTitle, templateVariables], () => {
 }, { deep: true })
 
 
-// 템플릿 제출
+// 템플릿 제출 (저장 + 검증 통합)
 const submitTemplate = async () => {
   if (isValidating.value) return // 이미 검증 중이면 중복 실행 방지
   
+  // 저장된 템플릿 ID 확보 (초기/최종 저장에서 내려온 값)
+  if (!templateId.value) {
+    const storedId = sessionStorage.getItem('templateId')
+    if (storedId) {
+      templateId.value = storedId
+    } else {
+      alert('템플릿 ID가 없습니다. 템플릿을 먼저 저장해주세요.')
+      return
+    }
+  }
+  
   isValidating.value = true // 검증 시작
   try {
-    console.log('템플릿 검증 요청 시작')
+    console.log('템플릿 제출 시작 (저장 + 검증)')
+    
+    // 로그인 상태 확인
+    if (!userStore.isLoggedIn || !userStore.accessToken) {
+      console.error('사용자가 로그인되지 않았거나 토큰이 없음')
+      
+      // 사용자 정보 복원 시도
+      userStore.restoreUser()
+      
+      if (!userStore.isLoggedIn || !userStore.accessToken) {
+        console.error('사용자 정보 복원 실패')
+        alert('템플릿을 제출하려면 로그인이 필요합니다. 로그인 페이지로 이동합니다.')
+        router.push('/')
+        return
+      } else {
+        console.log('사용자 정보 복원 성공')
+      }
+    }
+    
+    // 선택된 버전의 템플릿 내용 사용
+    const selectedVersionTemplate = versionTemplates.value[currentVersion.value]
+    if (selectedVersionTemplate) {
+      console.log(`선택된 버전 ${currentVersion.value}의 템플릿 사용`)
+      templateContent.value = selectedVersionTemplate.content
+      templateTitle.value = selectedVersionTemplate.title
+      templateVariables.value = selectedVersionTemplate.variableList
+      editedVariables.value = [...selectedVersionTemplate.variableList]
+    }
     
     // 제출 전 변수 배열 보정
     ensureValidVariables()
     // 마커 제거 후 최종 템플릿 확정
     const finalTemplate = removeAllMarkers()
+    
+    // 1단계: 선택된 버전으로 템플릿 저장/업데이트 (기존 templateId로 업데이트)
+    console.log('선택된 버전으로 템플릿 저장/업데이트 시작')
+    console.log('업데이트할 템플릿 ID:', templateId.value)
+    const saveResponse = await templateApi.saveTemplate(
+      finalTemplate,
+      editedVariables.value,
+      templateCategory.value,
+      userMessage.value,
+      templateTitle.value,
+      templateId.value // 기존 templateId로 업데이트
+    )
+    
+    console.log('템플릿 저장 응답:', saveResponse.data)
+    
+    if (!saveResponse.data.success) {
+      console.error('템플릿 저장 실패:', saveResponse.data.message)
+      alert('템플릿 저장에 실패했습니다: ' + saveResponse.data.message)
+      return
+    }
+    
+    // 저장 응답에서 templateId 확인 (업데이트 시 동일한 ID 반환)
+    const savedTemplateId = saveResponse.data.templateId || templateId.value
+    if (savedTemplateId && savedTemplateId !== templateId.value) {
+      templateId.value = savedTemplateId
+      sessionStorage.setItem('templateId', savedTemplateId)
+    }
+    console.log('템플릿 저장 성공, 템플릿 ID:', savedTemplateId)
     
     // 백엔드로 템플릿 검증 요청
     const response = await templateApi.validateTemplate(
@@ -1205,8 +1280,9 @@ const submitTemplate = async () => {
       editedVariables.value,
       templateCategory.value,
       userMessage.value,
-      templateTitle.value
-    )
+      templateTitle.value,
+      savedTemplateId // 저장된 템플릿 ID로 검증
+  )
     
     console.log('템플릿 검증 응답:', response.data)
     console.log('응답 구조 확인:', {
@@ -1259,6 +1335,7 @@ const submitTemplate = async () => {
         alert(`템플릿 수정이 필요합니다 📝\n\n${validationStage.value}에서 ${totalErrors.value}개 오류, ${totalWarnings.value}개 경고가 발견되었습니다.\n오른쪽 사이드바에서 상세 내용과 수정 방법을 확인해주세요.`)
       }, 100)
     }
+
   } catch (error) {
     console.error('템플릿 검증 실패:', error)
     showErrorAlert('템플릿 검증 중 오류가 발생했습니다. 다시 시도해주세요.')
@@ -1320,12 +1397,18 @@ const saveTemplate = async () => {
 
     // 1단계: 먼저 템플릿 저장
     console.log('1단계: 템플릿 저장 시작')
+    const currentTemplateId = templateId.value || sessionStorage.getItem('templateId')
+    if (!currentTemplateId) {
+      alert('템플릿 ID가 없습니다. 템플릿을 먼저 생성해주세요.')
+      return
+    }
     const saveResponse = await templateApi.saveTemplate(
       templateContent.value,
       editedVariables.value,
       templateCategory.value,
       userMessage.value,
-      templateTitle.value
+      templateTitle.value,
+      currentTemplateId
     )
     
     console.log('템플릿 저장 응답:', saveResponse.data)
@@ -1336,14 +1419,19 @@ const saveTemplate = async () => {
       return
     }
     
-    const templateId = saveResponse.data.templateId
-    console.log('템플릿 저장 성공, 저장된 템플릿 ID:', templateId)
+    const savedTemplateId = saveResponse.data.templateId
+    if (savedTemplateId) {
+      templateId.value = savedTemplateId
+      sessionStorage.setItem('templateId', savedTemplateId)
+    }
+    console.log('템플릿 저장 성공, 저장된 템플릿 ID:', savedTemplateId)
     
-    // 저장 성공 후 검증 단계로 전환
+    // 저장 성공 후 검증 단계로 전환 (검증 로직은 변경하지 않음)
     stage.value = 'validate'
-    
-    // 검증 프로세스 시작
-    await submitTemplate()
+    router.replace({
+      name: 'template-result',
+      query: { ...router.currentRoute.value.query, stage: 'validate' }
+    })
     
   } catch (error: any) {
     console.error('템플릿 저장 중 오류 발생:', error)

@@ -11,6 +11,7 @@ import re
 from typing import Dict, Any, List
 import json
 import logging
+import asyncio
 
 import sys
 import os
@@ -68,8 +69,6 @@ class ConstraintValidator:
         logger.debug(f"입력 데이터 keys: {list(template_data.keys())}")
 
         try:
-            import asyncio
-            
             # 3개 검증을 병렬로 실행
             tasks = [
                 self._check_informational_message_requirements_async(template_data),
@@ -175,7 +174,7 @@ class ConstraintValidator:
             prompt = get_informational_message_validation_prompt(category, templateTitle, templateContent)
             
             # 비동기 함수 호출
-            response = await self.openai_service.chat_completion([
+            response = await self.openai_service.chat_completion_blocking([
                 {"role": "system", "content": get_system_prompt('informational')},
                 {"role": "user", "content": prompt}
             ])
@@ -225,7 +224,7 @@ class ConstraintValidator:
             prompt = get_variable_usage_validation_prompt(templateContent, detected_variables, variable_names)
             
             # 비동기 함수 호출
-            response = await self.openai_service.chat_completion([
+            response = await self.openai_service.chat_completion_blocking([
                 {"role": "system", "content": get_system_prompt('variable_usage')},
                 {"role": "user", "content": prompt}
             ])
@@ -274,7 +273,7 @@ class ConstraintValidator:
             prompt = get_template_writing_validation_prompt(templateTitle, templateContent)
             
             # 비동기 함수 호출
-            response = await self.openai_service.chat_completion([
+            response = await self.openai_service.chat_completion_blocking([
                 {"role": "system", "content": get_system_prompt('template_writing')},
                 {"role": "user", "content": prompt}
             ])
@@ -304,4 +303,3 @@ class ConstraintValidator:
             warnings.append("기타 템플릿 작성 규칙 검증 중 오류가 발생했습니다.")
         
         return errors, warnings, details
-
