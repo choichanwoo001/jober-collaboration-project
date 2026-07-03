@@ -8,18 +8,17 @@ import re
 from pathlib import Path
 from typing import Dict, Any, List, Union
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from services.chromadb_service import ChromaDBService
+from .chromadb_service import ChromaDBService
 
 try:
-    from services.openai_service import OpenAIService
+    from .openai_service import OpenAIService
     HAS_OPENAI_SERVICE = True
 except ImportError:
     HAS_OPENAI_SERVICE = False
     print("Warning: OpenAI 서비스를 로드할 수 없습니다. Mock 모드로 실행됩니다.")
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.alimtalk_models import (
     ValidationRequest, ValidationResponse, ValidationResult, ProblemArea
@@ -53,6 +52,7 @@ class AlimtalkValidationService:
         if self.is_initialized:
             return
             
+<<<<<<< HEAD
         # ChromaDB 초기화 - 정책 문서 및 승인된 템플릿 데이터 로드
         await self.chromadb_service.initialize()
         
@@ -67,6 +67,28 @@ class AlimtalkValidationService:
         self.is_initialized = True
         print(">>service<<")
         print("✅ 알림톡 검증 서비스 초기화 완료")
+=======
+        try:
+            # ChromaDB 초기화 - 정책 문서 및 승인된 템플릿 데이터 로드
+            await self.chromadb_service.initialize()
+            
+            # 검증 파이프라인 초기화 - LLM 기반 제약 검증기와 의미적 검증기 연결
+            from validators.constraint_validator import ConstraintValidator
+            constraint_validator = ConstraintValidator()
+            self.validation_pipeline = ValidationPipeline(
+                chromadb_service=self.chromadb_service,
+                constraint_validator=constraint_validator
+            )
+            
+            self.is_initialized = True
+            print(">>service<<")
+            print(" 알림톡 검증 서비스 초기화 완료")
+            
+        except Exception as e:
+            print(">>service<<")
+            print(f" 알림톡 검증 서비스 초기화 실패: {e}")
+            raise
+>>>>>>> c1e1ee42278c5f8af972b279cbf33ee431ac001f
     
     async def validate_template(self, request: ValidationRequest) -> ValidationResponse:
         """템플릿 검증 실행"""
@@ -76,7 +98,7 @@ class AlimtalkValidationService:
         try:
             # 검증 실행
             template_data = request.template.dict()
-            result = await self.validation_pipeline.validate(template_data)
+            result = self.validation_pipeline.validate(template_data)
             
             # 응답 생성
             if result['final_result'].is_valid:
@@ -125,21 +147,6 @@ class AlimtalkValidationService:
             total_errors = sum(1 for area in problem_areas if area.severity == "error")
             total_warnings = sum(1 for area in problem_areas if area.severity == "warning")
             
-            # validation_errors 생성
-            validation_errors = []
-            for result in validation_results:
-                for error in result.errors:
-                    validation_errors.append({
-                        "rule_type": f"{result.stage}_validation",
-                        "rule": "알림톡 승인 규칙",
-                        "reason": error,
-                        "suggestion": "AI에서 생성된 수정 제안을 참고해주세요",
-                        "severity": "error",
-                        "variable_name": None,
-                        "stage": result.stage
-                    })
-
-            
             response = ValidationResponse(
                 success=success,
                 message=final_message,
@@ -160,6 +167,7 @@ class AlimtalkValidationService:
                 total_errors=0,
                 total_warnings=0
             )
+<<<<<<< HEAD
     
     async def _extract_problem_info(self, error_source: Union[str, Dict[str, Any]], template_content: str) -> Dict[str, Any]:
         """AI를 사용해서 문제 영역을 자동으로 추출"""
@@ -341,29 +349,14 @@ class AlimtalkValidationService:
             
             if 'alternatives' in data:
                 print(f"JSON에서 alternatives 키 발견: {list(data['alternatives'].keys())}")
-                alternative_keys = list(data['alternatives'].keys())
-                
-                for i, error in enumerate(errors):
+                for error in errors:
+                    # 오류 내용과 정확히 일치하는 키 찾기
                     found_alternatives = None
-                    
-                    # 1. 정확한 키 매칭 시도
                     for key, alternatives in data['alternatives'].items():
                         if error in key or key in error:
                             found_alternatives = alternatives
-                            print(f"오류 '{error}'에 대한 대안 찾음 (정확 매칭): {alternatives}")
+                            print(f"오류 '{error}'에 대한 대안 찾음: {alternatives}")
                             break
-                    
-                    # 2. 정확한 매칭이 안되면 순서대로 매칭 (오류 메시지 1, 2, 3...)
-                    if not found_alternatives and i < len(alternative_keys):
-                        key = alternative_keys[i]
-                        found_alternatives = data['alternatives'][key]
-                        print(f"오류 '{error}'에 대한 대안 찾음 (순서 매칭): {found_alternatives}")
-                    
-                    # 3. 여전히 없으면 첫 번째 대안 사용
-                    if not found_alternatives and len(alternative_keys) > 0:
-                        key = alternative_keys[0]
-                        found_alternatives = data['alternatives'][key]
-                        print(f"오류 '{error}'에 대한 대안 찾음 (첫 번째 사용): {found_alternatives}")
                     
                     if found_alternatives:
                         alternatives_dict[error] = found_alternatives
@@ -524,3 +517,8 @@ class AlimtalkValidationService:
                 problem_areas.append(problem_area)
         
         return problem_areas
+    
+
+=======
+>>>>>>> c1e1ee42278c5f8af972b279cbf33ee431ac001f
+
