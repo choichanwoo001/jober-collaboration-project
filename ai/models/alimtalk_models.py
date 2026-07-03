@@ -49,7 +49,7 @@ class AlimtalkTemplate(BaseModel):
     """알림톡 템플릿 모델"""
     # template_pk: Optional[int] = Field(None, description="템플릿 Primary Key")
     template_content: Optional[str] = Field(None, description="생성된 카카오톡 알림톡 템플릿 전체 내용")
-    template_title: Optional[str] = Field(None, max_length=200, description="제목")
+    template_title: Optional[str] = Field(None, max_length=50, description="제목")
     variables: Optional[List[Dict[str, str]]] = Field(None, description="변수 리스트")
     buttons: Optional[List[Button]] = Field(None, max_items=5, description="버튼 목록")
     category: Optional[str] = Field(None, description="분류")
@@ -121,22 +121,10 @@ class ValidationRequest(BaseModel):
             if backend_data.get("variableList"):
                 for v in backend_data["variableList"]:
                     if v.get("variableKey"):
-                        variable_key = v.get("variableKey")
-                        # variableKey가 딕셔너리인 경우 name 필드 추출
-                        if isinstance(variable_key, dict):
-                            name = variable_key.get("name", "")
-                            var_type = variable_key.get("type", "string")
-                            description = variable_key.get("description", "")
-                        else:
-                            # 문자열인 경우
-                            name = str(variable_key)
-                            var_type = "string"
-                            description = v.get("variableValue", "")
-                        
                         variables.append({
-                            "name": name,
-                            "type": var_type,
-                            "description": description
+                            "name": v.get("variableKey"),
+                            "type": "string",
+                            "description": v.get("variableValue", "")
                         })
             
             alimtalk_template = AlimtalkTemplate(
@@ -164,7 +152,7 @@ class ValidationResponse(BaseModel):
     class Config:
         # JSON 직렬화 시 필드명을 그대로 유지
         alias_generator = None
-        validate_by_name = True
+        allow_population_by_field_name = True
     
     def dict(self, **kwargs):
         """JSON 직렬화를 위한 dict 메서드 오버라이드"""
@@ -188,36 +176,6 @@ class ChatResponse(BaseModel):
     """채팅 응답 모델"""
     response: str
     model: str
-
-class TemplateModificationRequest(BaseModel):
-    """템플릿 수정 요청 모델"""
-    current_template: str
-    current_template_title: str
-    userMessage: str
-    chat_history: List[Dict[str, Any]] = []
-    variableList: List[Dict[str, str]] = []
-
-class TemplateModificationResponse(BaseModel):
-    """템플릿 수정 응답 모델"""
-    modified_template: str
-    template_title: str
-    variables: List[str]
-    explanation: str
-    model: str
-
-
-# AI 서비스 관련 모델들
-class ChatRequest(BaseModel):
-    """채팅 요청 모델"""
-    message: str
-    model: Optional[str] = "gpt-4o-mini"
-
-
-class ChatResponse(BaseModel):
-    """채팅 응답 모델"""
-    response: str
-    model: str
-
 
 class TemplateModificationRequest(BaseModel):
     """템플릿 수정 요청 모델"""
