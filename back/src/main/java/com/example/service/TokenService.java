@@ -2,8 +2,11 @@ package com.example.service;
 
 import com.example.config.JwtTokenProvider;
 import com.example.entity.Account;
+import com.example.exception.user.UserErrorCode;
+import com.example.exception.user.UserException;
 import com.example.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -13,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TokenService {
 
     private final JwtTokenProvider jwtTokenProvider;
@@ -51,31 +55,38 @@ public class TokenService {
     public Map<String, String> refreshAccessToken(String refreshToken) {
         // Refresh Token 유효성 검사
         if (!jwtTokenProvider.validateToken(refreshToken)) {
-            throw new IllegalArgumentException("유효하지 않은 Refresh Token입니다.");
+            log.info("[TOKEN] Invalid refresh token signature or claims. token={}", refreshToken);
+            throw new UserException(UserErrorCode.INVALID_TOKEN);
         }
 
         // 토큰 타입 확인
         String tokenType = jwtTokenProvider.getTokenType(refreshToken);
         if (!"refresh".equals(tokenType)) {
-            throw new IllegalArgumentException("잘못된 토큰 타입입니다.");
+            log.warn("[TOKEN] Invalid token type. expected=refresh, actual={}, token={}", tokenType, refreshToken);
+            throw new UserException(UserErrorCode.INVALID_TOKEN);
         }
 
         // 계정 ID 추출
         Long accountId = jwtTokenProvider.getAccountId(refreshToken);
         if (accountId == null) {
-            throw new IllegalArgumentException("토큰에서 계정 정보를 찾을 수 없습니다.");
+            log.error("[TOKEN] Account ID not found in refresh token claims. token={}", refreshToken);
+            throw new UserException(UserErrorCode.TOKEN_MISMATCH);
         }
 
         // Redis에서 Refresh Token 확인
         String redisKey = REFRESH_TOKEN_PREFIX + accountId;
         String storedRefreshToken = redisTemplate.opsForValue().get(redisKey);
         if (storedRefreshToken == null || !storedRefreshToken.equals(refreshToken)) {
-            throw new IllegalArgumentException("유효하지 않은 Refresh Token입니다.");
+            log.warn("[TOKEN] Refresh token not found in Redis. It may have expired or been logged out. accountId={}", accountId);
+            throw new UserException(UserErrorCode.INVALID_TOKEN);
         }
 
         // 사용자 정보 조회
         Account account = accountRepository.findById(accountId)
-            .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+            .orElseThrow(() -> {
+                log.error("[TOKEN] User not found for accountId in token. The user may have been deleted. accountId={}", accountId);
+                return new UserException(UserErrorCode.USER_NOT_FOUND);
+            });
 
         // 새로운 Access Token 생성
         String newAccessToken = jwtTokenProvider.createAccessToken(
