@@ -1,51 +1,26 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional, Dict, Any
+import re
 from services.openai_service import OpenAIService
+
 from services.chromadb_service import ChromaDBService
-from services.huggingface_service import HuggingFaceService
+from templateEngine.prompts.message_analyzer_prompts import TemplateGenerationPromptBuilder, TemplateModificationPromptBuilder
+from templateEngine.pipeline import create_pipeline
+from middleware.auth_middleware import get_current_user
+from services.dependencies import get_openai_service
+from models.alimtalk_models import (
+    ChatRequest, ChatResponse, 
+    TemplateModificationRequest, TemplateModificationResponse
+)
 
 router = APIRouter(prefix="/ai", tags=["AI Services"])
 
-# 서비스 인스턴스 초기화
-openai_service = OpenAIService()
-chromadb_service = ChromaDBService()
-huggingface_service = HuggingFaceService()
-
-# Pydantic 모델들
-class ChatRequest(BaseModel):
-    message: str
-    model: Optional[str] = "gpt-3.5-turbo"
-
-class ChatResponse(BaseModel):
-    response: str
-    model: str
-
-class DocumentRequest(BaseModel):
-    content: str
-    metadata: Optional[Dict[str, Any]] = None
-
-class SearchRequest(BaseModel):
-    query: str
-    n_results: Optional[int] = 5
-
-class TextGenerationRequest(BaseModel):
-    prompt: str
-    model: Optional[str] = "gpt2"
-    max_length: Optional[int] = 100
-
-class SentimentRequest(BaseModel):
-    text: str
-    model: Optional[str] = "cardiffnlp/twitter-roberta-base-sentiment"
-
-class QuestionAnswerRequest(BaseModel):
-    question: str
-    context: str
-    model: Optional[str] = "deepset/roberta-base-squad2"
-
-# OpenAI 라우트
+# OpenAI 라우트 (의존성 주입 사용)
 @router.post("/openai/chat", response_model=ChatResponse)
-async def openai_chat(request: ChatRequest):
+async def openai_chat(
+    request: ChatRequest,
+    openai_service: OpenAIService = Depends(get_openai_service)
+):
     """OpenAI 채팅 API"""
     try:
         messages = [{"role": "user", "content": request.message}]
@@ -54,104 +29,90 @@ async def openai_chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/openai/embeddings")
-async def openai_embeddings(text: str):
-    """OpenAI 임베딩 API"""
-    try:
-        embeddings = await openai_service.embeddings(text)
-        return {"embeddings": embeddings}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-# ChromaDB 라우트
-@router.post("/chromadb/documents")
-async def add_documents(request: DocumentRequest):
-    """ChromaDB에 문서 추가"""
+# 템플릿 수정 라우트
+@router.post("/template/modify", response_model=TemplateModificationResponse)
+async def modify_template(
+    request: TemplateModificationRequest,
+    openai_service: OpenAIService = Depends(get_openai_service)
+):
+    """채팅을 통한 템플릿 수정"""
     try:
-        result = await chromadb_service.add_documents([request.content], [request.metadata])
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # 채팅 히스토리를 포함한 프롬프트 구성
+        chat_context = ""
+        if request.chat_history:
+            chat_context = "\n".join([
+                f"[{msg.get('type', 'user')}] {msg.get('content', '')}"
+                for msg in request.chat_history[-6:]  # 최근 6개 메시지만 사용
+            ])
+            print(f"채팅 히스토리 ({len(request.chat_history)}개 메시지): {chat_context}")
+        else:
+            print("채팅 히스토리가 없습니다.")
 
-@router.post("/chromadb/search")
-async def search_documents(request: SearchRequest):
-    """ChromaDB에서 문서 검색"""
-    try:
-        result = await chromadb_service.search_documents(request.query, request.n_results)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/chromadb/info")
-async def get_collection_info():
-    """컬렉션 정보 조회"""
-    try:
-        result = await chromadb_service.get_collection_info()
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/chromadb/documents/{document_id}")
-async def get_document(document_id: str):
-    """ID로 문서 조회"""
-    try:
-        result = await chromadb_service.get_document_by_id(document_id)
-        if result is None:
-            raise HTTPException(status_code=404, detail="Document not found")
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Hugging Face 라우트
-@router.post("/huggingface/generate")
-async def generate_text(request: TextGenerationRequest):
-    """Hugging Face 텍스트 생성"""
-    try:
-        result = await huggingface_service.generate_text(
-            request.prompt, 
-            request.model, 
-            request.max_length
+        # 프롬프트 빌더 사용
+        prompt_builder = TemplateModificationPromptBuilder(
+            current_template=request.current_template,
+            user_message=request.userMessage,
+            chat_context=chat_context
         )
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        prompt = prompt_builder.build()
 
-@router.post("/huggingface/sentiment")
-async def analyze_sentiment(request: SentimentRequest):
-    """Hugging Face 감정 분석"""
-    try:
-        result = await huggingface_service.analyze_sentiment(request.text, request.model)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # OpenAI를 통한 템플릿 수정
+        messages = [{"role": "user", "content": prompt}]
+        response = await openai_service.chat_completion(messages, "gpt-4o-mini")
 
-@router.post("/huggingface/embeddings")
-async def get_embeddings(texts: List[str], model: str = "sentence-transformers/all-MiniLM-L6-v2"):
-    """Hugging Face 임베딩"""
-    try:
-        result = await huggingface_service.get_embeddings(texts, model)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # "수정된 템플릿:" 이후의 템플릿 부분만 추출
+        template_match = re.search(r'수정된 템플릿:\s*\n?(.*?)(?:\n\n수정된 부분 설명:|수정 설명:|설명:|$)', response, re.DOTALL)
+        if template_match:
+            modified_template = template_match.group(1).strip()
+        else:
+            # 패턴 2: "---" 사이의 내용이 여러 개인 경우 첫 번째 것 사용
+            dash_matches = re.findall(r'---\s*\n(.*?)\n---', response, re.DOTALL)
+            if dash_matches and len(dash_matches) > 0:
+                # 첫 번째 "---" 사이의 내용이 가장 긴 것을 선택 (템플릿 내용)
+                modified_template = max(dash_matches, key=len).strip()
+            else:
+                # 패턴 3: 전체 응답에서 첫 번째 긴 텍스트 블록 사용
+                lines = response.split('\n')
+                content_lines = []
+                in_content = False
+                for line in lines:
+                    if '알림톡' in line and '템플릿' in line:
+                        in_content = True
+                        continue
+                    if in_content and line.strip() and not line.startswith('변수') and not line.startswith('이 템플릿'):
+                        content_lines.append(line)
+                    if line.startswith('변수') or line.startswith('이 템플릿'):
+                        break
+                modified_template = '\n'.join(content_lines).strip()
 
-@router.post("/huggingface/qa")
-async def question_answering(request: QuestionAnswerRequest):
-    """Hugging Face 질문-답변"""
-    try:
-        result = await huggingface_service.answer_question(
-            request.question, 
-            request.context, 
-            request.model
+        # 최종 정리
+        if not modified_template or len(modified_template) < 10:
+            modified_template = response.strip()
+
+        print(f"추출된 템플릿: {modified_template}")
+
+        variables = []
+        
+        # 변수 추출 ({{변수명}} 형태)
+        variable_pattern = r'\{\{([^}]+)\}\}'
+        found_variables = re.findall(variable_pattern, modified_template)
+
+        for var in set(found_variables):
+            variables.append(var.strip())
+        
+        # 수정 설명 생성
+        explanation = f"사용자 요청 '{request.userMessage}'에 따라 템플릿을 수정했습니다."
+
+        return TemplateModificationResponse(
+            modified_template=modified_template,
+            template_title=request.current_template_title,
+            variables=variables,
+            explanation=explanation,
+            model="gpt-4o-mini"
         )
-        return result
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/huggingface/models")
-async def get_available_models():
-    """사용 가능한 모델 목록"""
-    try:
-        result = await huggingface_service.get_available_models()
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+

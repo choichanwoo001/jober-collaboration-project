@@ -1,23 +1,90 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
+import LandingView from '../views/LandingView.vue'
+import { useUserStore } from '@/stores/user'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
-      name: 'home',
-      component: HomeView
+      name: 'landing',
+      component: LandingView,
+      meta: { requiresAuth: false } // 인증 필요 없음
     },
     {
-      path: '/about',
-      name: 'about',
-      // 라우트 레벨에서 코드 분할
-      // 이렇게 하면 이 라우트에 대한 코드가 별도의 청크로 분할되어
-      // 라우트가 방문될 때만 로드됩니다.
-      component: () => import('../views/AboutView.vue')
+      path: '/template/result',
+      name: 'template-result',
+      component: () => import('../views/TemplateResultView.vue'),
+      meta: { requiresAuth: true }
+    },
+
+    {
+      path: '/success',
+      name: 'success',
+      component: () => import('../views/SuccessView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/mypage',
+      name: 'mypage',
+      component: () => import('../views/MyPageView.vue'),
+      meta: { requiresAuth: true }
     }
   ]
+})
+
+// 라우트 가드
+// 토큰이 필요한 페이지 접근 시 로그인 여부 확인
+router.beforeEach(async (to, from, next) => {
+  const userStore = useUserStore()
+
+  // 인증이 필요 없으면 통과
+  if (!to.meta.requiresAuth) return next()
+
+  // 이미 로그인 정보가 있으면 통과
+  if(userStore.isLoggedIn) return next()
+
+  // 토큰 정보 조회
+  const token = localStorage.getItem('accessToken')
+
+  // 토큰이 없을 경우 랜딩 페이지로 리다이렉트
+  if (to.meta.requiresAuth && !token) {
+    window.alert("로그인이 필요한 페이지 입니다.")
+    return next({ name: 'landing' })
+  }
+
+  // 서버에 검증 시도
+  try {
+    const res = await fetch('/api/auth/me', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
+    if (res.ok) {
+      const user = await res.json()
+      userStore.setUser(
+        { accountId: user.accountId, role: user.role },
+        { accessToken: user.data.accessToken, refreshToken: user.data.refreshToken }
+      )
+      return next()
+    } else if (res.status === 401) {
+      window.alert("로그인이 필요한 페이지 입니다.")
+      localStorage.removeItem('accessToken')
+      return next({ name: 'landing' })
+    } else if (res.status === 403) {
+      window.alert("접근 권한이 없습니다.")
+      return next({ name: 'landing' })
+    } else {
+      window.alert("알 수 없는 오류가 발생했습니다.")
+      return next({ name: 'landing' })
+    }
+  } catch (error) {
+    console.error("네트워크 오류:", error)
+    window.alert("서버와 통신할 수 없습니다.")
+    return next({ name: 'landing' })
+  }
 })
 
 export default router

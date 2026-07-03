@@ -1,0 +1,261 @@
+#!/bin/bash
+
+# Nginx 컨테이너 헬스체크
+if curl -f http://localhost/health > /dev/null 2>&1; then
+    log_success "Nginx 컨테이너가 정상적으로 실행 중입니다."
+else
+    log_warning "Nginx 컨테이너 헬스체크 실패. 로그를 확인해주세요."
+fi
+
+# SSL 설정
+log_info "SSL 인증서 설정 중..."
+
+# SSL 스크립트가 있고 실행 가능한 경우에만 실행
+if [ -f "./scripts/setup-ssl.sh" ] && [ -x "./scripts/setup-ssl.sh" ]; then
+    if ./scripts/setup-ssl.sh; then
+        log_success "SSL 인증서 설정 완료"
+        # HTTPS로 접근 가능한지 확인
+        if curl -f https://pls-jober.shop/health > /dev/null 2>&1; then
+            log_success "HTTPS 서비스가 정상적으로 실행 중입니다."
+        else
+            log_warning "HTTPS 접근이 아직 불가능합니다. HTTP로 접근하세요."
+        fi
+    else
+        log_warning "SSL 설정에 실패했습니다. HTTP로 서비스를 제공합니다."
+    fi
+else
+    log_info "SSL 설정 스크립트가 없거나 실행 권한이 없습니다. SSL을 사용하려면 chmod +x ./scripts/setup-ssl.sh 를 실행하세요."
+fi
+
+# ===================================================================
+#  통합 배포 스크립트
+# ===================================================================
+
+set -e  # 에러 발생 시 스크립트 중단
+
+echo "PLS-Jober 통합 배포 시작..."
+
+# 색상 정의
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# 로그 함수
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+} 
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# 환경변수 파일 확인
+if [ ! -f ".env" ]; then
+    log_error ".env 파일이 없습니다. env.example을 참고하여 .env 파일을 생성해주세요."
+    exit 1
+fi
+
+# Docker 및 Docker Compose 설치 확인
+if ! command -v docker &> /dev/null; then
+    log_error "Docker가 설치되어 있지 않습니다."
+    exit 1
+fi
+
+if ! command -v docker-compose version &> /dev/null; then
+    log_error "Docker Compose가 설치되어 있지 않습니다."
+    exit 1
+fi
+
+# 기존 컨테이너 정리
+log_info "기존 컨테이너 정리 중..."
+docker-compose down --remove-orphans || true
+
+# 안전한 Docker 정리 (용량 증가 방지)
+log_info "사용하지 않는 Docker 리소스 정리 중..."
+
+# 1. 중지된 컨테이너 정리
+docker container prune -f
+
+# 2. 이전 프로젝트 이미지들 정리 (새로 빌드할 것들)
+docker rmi $(docker images 'final_6team_pls_jober*' -q) 2>/dev/null || true
+
+# 3. dangling 이미지 정리 (태그 없는 이미지)
+docker image prune -f
+
+# 4. 사용되지 않는 네트워크 정리
+docker network prune -f
+
+# 5. 빌드 캐시 정리 (용량 절약)
+docker builder prune -f
+
+log_success "Docker 리소스 정리 완료"
+
+# Docker BuildKit 활성화 (빌드 성능 향상) 
+export DOCKER_BUILDKIT=1
+export BUILDKIT_PROGRESS=plain
+
+# AI 서비스 이미지 빌드 (최적화된 빌드)
+log_info "AI 서비스 이미지 빌드 중... (최초 빌드시 10-15분 소요 예상)"
+if ! timeout 5400 docker-compose build ai-service; then
+    log_error "AI 서비스 빌드 실패 또는 타임아웃 (90분 제한)"
+    exit 1
+fi
+log_success "AI 서비스 빌드 완료"
+
+# 백엔드 이미지 빌드 (로컬에서 직접 빌드)
+log_info "백엔드 이미지 빌드 중..."
+if ! timeout 1200 docker-compose build --parallel backend; then
+    log_error "백엔드 빌드 실패 또는 타임아웃 (20분 제한)"
+    exit 1
+fi
+log_success "백엔드 빌드 완료"
+
+# 프론트엔드 빌드 (로컬에서)
+log_info "프론트엔드 빌드 중..."
+cd front
+npm ci
+npm run build
+cd ..
+
+# 프론트엔드 빌드 완료 (nginx 컨테이너에서 직접 마운트됨)
+log_info "프론트엔드 빌드 완료"
+
+# 호스트 서비스 상태 확인
+log_info "호스트 서비스 상태 확인 중..."
+
+# MySQL 상태 확인 및 자동 시작
+if systemctl is-active --quiet mysql; then
+    log_success "MySQL이 정상적으로 실행 중입니다."
+else
+    log_warning "MySQL이 실행되지 않았습니다. 자동으로 시작합니다."
+    sudo systemctl start mysql
+    if systemctl is-active --quiet mysql; then
+        log_success "MySQL이 성공적으로 시작되었습니다."
+    else
+        log_error "MySQL 시작에 실패했습니다."
+        exit 1
+    fi
+fi
+
+
+# Redis 상태 확인
+if redis-cli ping > /dev/null 2>&1; then
+    log_success "Redis가 정상적으로 실행 중입니다."
+else
+    log_warning "Redis 헬스체크 실패. Redis가 실행 중인지 확인해주세요."
+fi
+
+# ChromaDB 상태 확인 (포트 8001로 가정)
+if curl -f http://localhost:8001/api/v1 > /dev/null 2>&1; then
+    log_success "ChromaDB가 정상적으로 실행 중입니다."
+else
+    log_warning "ChromaDB 헬스체크 실패. ChromaDB가 실행 중인지 확인해주세요."
+fi
+
+# 호스트 Nginx 중지 (Docker nginx 사용)
+log_info "호스트 Nginx 중지 중..."
+sudo systemctl stop nginx || true
+sudo systemctl disable nginx || true
+
+# 서비스 시작
+log_info "Docker 서비스 시작 중..."
+docker-compose up -d
+
+# 헬스체크
+log_info "서비스 헬스체크 중..."
+sleep 30
+
+# 백엔드 헬스체크
+if curl -f http://localhost:8080/actuator/health > /dev/null 2>&1; then
+    log_success "백엔드 서비스가 정상적으로 실행 중입니다."
+else
+    log_warning "백엔드 서비스 헬스체크 실패. 로그를 확인해주세요."
+fi
+
+# AI 서비스 헬스체크
+if curl -f http://localhost:8000/health > /dev/null 2>&1; then
+    log_success "AI 서비스가 정상적으로 실행 중입니다."
+else
+    log_warning "AI 서비스 헬스체크 실패. 로그를 확인해주세요."
+fi
+
+# SSL 설정
+log_info "SSL 인증서 설정 중..."
+
+# SSL 스크립트가 있고 실행 가능한 경우에만 실행
+if [ -f "./scripts/setup-ssl.sh" ] && [ -x "./scripts/setup-ssl.sh" ]; then
+    if ./scripts/setup-ssl.sh; then
+        log_success "SSL 인증서 설정 완료"
+        # HTTPS로 접근 가능한지 확인
+        if curl -f https://pls-jober.shop/health > /dev/null 2>&1; then
+            log_success "HTTPS 서비스가 정상적으로 실행 중입니다."
+            echo "  프론트엔드 (HTTPS): https://pls-jober.shop"
+        else
+            log_warning "HTTPS 접근이 아직 불가능합니다. HTTP로 접근하세요."
+        fi
+    else
+        log_warning "SSL 설정에 실패했습니다. HTTP로 서비스를 제공합니다."
+    fi
+else
+    log_info "SSL 설정 스크립트가 없거나 실행 권한이 없습니다. SSL을 사용하려면 chmod +x ./scripts/setup-ssl.sh 를 실행하세요."
+fi
+
+# SSL 설정
+log_info "SSL 인증서 설정 중..."
+
+# SSL 스크립트가 있고 실행 가능한 경우에만 실행
+if [ -f "./scripts/setup-ssl.sh" ] && [ -x "./scripts/setup-ssl.sh" ]; then
+    if ./scripts/setup-ssl.sh; then
+        log_success "SSL 인증서 설정 완료"
+        # HTTPS로 접근 가능한지 확인
+        if curl -f https://pls-jober.shop/health > /dev/null 2>&1; then
+            log_success "HTTPS 서비스가 정상적으로 실행 중입니다."
+        else
+            log_warning "HTTPS 접근이 아직 불가능합니다. HTTP로 접근하세요."
+        fi
+    else
+        log_warning "SSL 설정에 실패했습니다. HTTP로 서비스를 제공합니다."
+    fi
+else
+    log_info "SSL 설정 스크립트가 없거나 실행 권한이 없습니다. SSL을 사용하려면 chmod +x ./scripts/setup-ssl.sh 를 실행하세요."
+fi
+
+# 서비스 상태 확인
+log_info "서비스 상태 확인:"
+docker-compose ps
+
+log_success "배포가 완료되었습니다!"
+echo ""
+echo "서비스 접속 정보:"
+echo "  프론트엔드 (HTTP): http://138.2.119.75"
+# HTTPS 체크
+if curl -s -f https://pls-jober.shop/health > /dev/null 2>&1; then
+    echo "  프론트엔드 (HTTPS): https://pls-jober.shop"
+fi
+echo "  백엔드 API: http://138.2.119.75/api"
+echo "  AI 서비스: http://138.2.119.75/ai"
+echo ""
+echo "서비스 관리 명령어:"
+echo "  Docker 서비스 상태 확인: docker-compose ps"
+echo "  Docker 서비스 로그 확인: docker-compose logs -f [서비스명]"
+echo "  Docker 서비스 중지: docker-compose down"
+echo "  Docker 서비스 재시작: docker-compose restart [서비스명]"
+echo ""
+echo "  호스트 서비스 관리:"
+echo "  MySQL 상태: sudo systemctl status mysql"
+echo "  MySQL 재시작: sudo systemctl restart mysql"
+echo "  ChromaDB 상태: curl http://localhost:8001/api/v1"
+echo ""
+echo "  Docker 서비스 관리:"
+echo "  Nginx 컨테이너 로그: docker-compose logs -f nginx"
+echo "  Nginx 컨테이너 재시작: docker-compose restart nginx"

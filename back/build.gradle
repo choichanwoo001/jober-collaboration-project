@@ -27,7 +27,14 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux' // WebClient를 사용하기 위한 의존성
+    // OAuth2 의존성 제거 - 커스텀 JWT 사용
+    implementation 'io.github.cdimascio:dotenv-java:3.0.0'
     
+    // Kakao OAuth2 for Social Login
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+
+
     // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.3'
@@ -35,17 +42,39 @@ dependencies {
     
     // MySQL
     runtimeOnly 'com.mysql:mysql-connector-j'
+
+    // H2 (개발용)
+//    runtimeOnly 'com.h2database:h2'
+    // flyway
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-mysql'
+
+    // H2 (테스트용)
+//    testRuntimeOnly 'com.h2database:h2'
     
     // Lombok
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     
     // Test
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation('org.springframework.boot:spring-boot-starter-test') {
+        exclude group: 'org.mockito', module: 'mockito-core'
+    }
     testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.mockito:mockito-core:5.5.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.5.0'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+    jvmArgs(
+        '-Xmx2g',
+        '-XX:+EnableDynamicAgentLoading',
+        '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.util=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
+        '--add-opens', 'java.base/java.net=ALL-UNNAMED',
+        '--add-opens', 'java.instrument/sun.instrument=ALL-UNNAMED'
+    )
+    systemProperty 'mockito.mock-maker', 'subclass'
 }
-

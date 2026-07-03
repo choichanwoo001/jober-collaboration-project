@@ -1,0 +1,68 @@
+# 워크플로우 이름
+name: Deploy to Oracle Cloud
+
+# 트리거 조건: main, develop 브랜치에 PR이 merge될 때만 실행
+on:
+  pull_request:
+    branches: ["main", "develop"]
+    types: [closed]
+
+jobs:
+  # ===================================================================
+  #  Job 1: 서버에서 직접 배포 (deploy.sh 스크립트 실행)
+  # ===================================================================
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    environment: ${{ github.base_ref == 'main' && 'production' || 'staging' }}
+    steps:
+      - name: Deploy to Oracle Cloud VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 138.2.119.75
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE }}
+          port: 22
+          timeout: 30m
+          command_timeout: 30m
+          script: |
+            # 프로젝트 디렉토리로 이동
+            cd /home/ubuntu/final_6team_pls_jober
+
+            # 최신 코드 pull (merge된 브랜치의 target 브랜치로)
+            git fetch origin
+            git reset --hard origin/${{ github.base_ref }}
+
+            # .env 파일 복사 (백업된 환경변수 사용)
+            if [ -f "/home/ubuntu/backup/.env.backup" ]; then
+              cp /home/ubuntu/backup/.env.backup .env
+            fi
+
+            # deploy.sh 실행 권한 부여
+            chmod +x deploy.sh
+
+            # 통합 배포 스크립트 실행
+            ./deploy.sh
+
+  # ===================================================================
+  #  Job 2: 배포 완료 알림
+  # ===================================================================
+  deployment-status:
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Deployment Status
+        run: |
+          echo "Deployment Summary:"
+          echo "Deploy: ${{ needs.deploy.result }}"
+          echo "Environment: ${{ github.base_ref == 'main' && 'production' || 'staging' }}"
+
+          if [[ "${{ needs.deploy.result }}" == "success" ]]; then 
+            echo "Deployment completed successfully!"
+            echo "Frontend: http://138.2.119.75"
+            echo "Backend API: http://138.2.119.75/api"
+            echo "AI Service: http://138.2.119.75/ai"
+          else
+            echo "Deployment failed"
+          fi

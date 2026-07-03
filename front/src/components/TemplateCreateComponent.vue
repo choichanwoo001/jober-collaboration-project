@@ -1,0 +1,297 @@
+<template>
+  <div class="template-form">
+    <div class="form-header">
+      <h2 class="form-title">알림톡 템플릿 생성</h2>
+      <p class="form-subtitle">원하는 템플릿 내용을 입력해주세요</p>
+    </div>
+    
+    <div class="form-content">
+      <div class="input-section">
+        <!-- 에러 발생 시 보여줄 화면 -->
+        <div v-if="errorMessage" class="error-display">
+          <i class="mdi mdi-alert-circle-outline error-icon"></i>
+          <p class="error-text">{{ errorMessage }}</p>
+          <button @click="clearError" class="retry-btn">다시 작성하기</button>
+        </div>
+        <!-- 정상 상태에서 보여줄 텍스트 입력창 -->
+        <textarea v-else
+            v-model="templateStore.userMessage"
+            placeholder="예시: 회원가입 완료 알림, 주문 배송 안내, 이벤트 참여 안내 등&#10;&#10;구체적으로 작성할수록 더 정확한 템플릿이 생성됩니다."
+            class="template-textarea"
+            :disabled="isGenerating"
+            rows="6"
+            @input="clearError"
+          ></textarea>
+        
+        <div class="input-footer">
+          <span class="char-count">{{ templateStore.userMessage.length }}/500</span>
+          <button 
+            class="generate-btn"
+            @click="handleSubmit"
+            :disabled="!canSubmit"
+          >
+            <span v-if="isGenerating" class="loading-spinner"></span>
+            <span v-else class="btn-content">
+              <i class="mdi mdi-magic-staff"></i>
+              템플릿 생성하기
+            </span>
+          </button>
+        </div>
+      </div>
+      
+    </div>
+  </div>
+</template>
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+import { useTemplateStore } from '@/stores/template'
+import { templateApi } from '@/api'
+
+const router = useRouter()
+const userStore = useUserStore()
+const templateStore = useTemplateStore()
+
+const isGenerating = ref(false)
+const errorMessage = ref('')
+
+const canSubmit = computed(() =>
+  templateStore.userMessage.trim().length > 0 && !isGenerating.value
+)
+
+const emit = defineEmits<{
+  (e: 'requireLogin'): void
+}>()
+
+const clearError = () => {
+  errorMessage.value = ''
+}
+const handleSubmit = async () => {
+  if (!canSubmit.value) return
+  clearError() // 요청 시작 시 이전 에러 메시지 초기화
+
+  // 로그인 여부 확인
+  if (!userStore.isLoggedIn) {
+    templateStore.setUserMessage(templateStore.userMessage)
+    alert('로그인이 필요합니다.')
+    emit('requireLogin')
+    return
+  }
+
+  isGenerating.value = true
+  try {
+    const response = await templateApi.generateTemplate(templateStore.userMessage)
+    templateStore.setUserMessage(templateStore.userMessage)
+    // AI 서버의 응답을 sessionStorage에 저장합니다.
+    const responseData = response.data;
+
+    // AI가 반환한 variables는 이미 문자열 배열입니다.
+    const variableNames = responseData.variables || [];
+
+    sessionStorage.setItem('generatedTemplate', JSON.stringify({
+      templateContent: responseData.template_content,
+      templateTitle: responseData.template_title,
+      variables: variableNames,
+      category: responseData.category || '기타',
+      userMessage: templateStore.userMessage
+    }));
+    
+    // 새 템플릿 생성 시 수정 횟수 초기화 (10번으로 설정)
+    sessionStorage.setItem('template_modifications_new', '10')
+    
+    router.push({
+      name: 'template-result',
+      state: response.data
+    })
+  } catch (error: any) {
+    // API 에러 응답에서 상세 메시지를 추출하여 사용자에게 보여줍니다.
+    if (error.response && error.response.data && error.response.data.detail) {
+      errorMessage.value = error.response.data.detail;
+    } else {
+      // 그 외의 네트워크 오류 등은 일반적인 메시지를 표시합니다.
+      console.error('Template generation failed:', error);
+      errorMessage.value = '템플릿 생성에 실패했습니다. 네트워크 연결을 확인하거나 다시 시도해주세요.';
+    }
+  } finally {
+    isGenerating.value = false
+  }
+}
+</script>
+
+<style scoped>
+/* 에러 메시지 표시 스타일 */
+.error-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 8rem;
+  padding: 1rem;
+  border: 2px dashed #ff5252;
+  border-radius: 0.8rem;
+  background-color: #fff5f5;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.error-icon {
+  font-size: 2.5rem;
+  color: #ff5252;
+  margin-bottom: 0.75rem;
+}
+
+.error-text {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #d32f2f;
+  margin: 0 0 1.25rem 0;
+  line-height: 1.5;
+}
+
+.retry-btn {
+  padding: 0.6rem 1.2rem;
+  border: 1px solid #ffcdd2;
+  background-color: white;
+  color: #d32f2f;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.retry-btn:hover {
+  background-color: #ffcdd2;
+  color: #b71c1c;
+}
+
+/* 템플릿 폼 컨테이너 */
+.template-form {
+  background: white;
+  border-radius: 0.8rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  width: 100%;
+  max-width: 450px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 폼 헤더 */
+.form-header {
+  padding: 2rem 2rem 1rem 2rem;
+  text-align: center;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.form-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 0.5rem 0;
+}
+
+.form-subtitle {
+  font-size: 1rem;
+  color: #666;
+  margin: 0;
+}
+
+/* 폼 콘텐츠 */
+.form-content {
+  padding: 2rem;
+}
+
+/* 입력 섹션 */
+.input-section {
+  margin-bottom: 1.5rem;
+}
+
+.template-textarea {
+  width: 100%;
+  min-height: 8rem;
+  padding: 1rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 0.8rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+  background: white;
+  transition: all 0.3s ease;
+  margin-bottom: 1rem;
+}
+
+.template-textarea:focus {
+  outline: none;
+  border-color: #8E24AA;
+  box-shadow: 0 0 0 3px rgba(142, 36, 170, 0.1);
+}
+
+.template-textarea:disabled {
+  background: #f8f9fa;
+  cursor: not-allowed;
+}
+
+/* 입력 하단 */
+.input-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.char-count {
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.generate-btn {
+  padding: 0.8rem 1.5rem;
+  border: none;
+  background: linear-gradient(135deg, #8E24AA 0%, #7B1FA2 100%);
+  color: white;
+  border-radius: 0.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(142, 36, 170, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.generate-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(142, 36, 170, 0.4);
+}
+
+.generate-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+
+/* 로딩 스피너 */
+.loading-spinner {
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+</style>

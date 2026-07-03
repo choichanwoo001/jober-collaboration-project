@@ -1,0 +1,67 @@
+services:
+  # ===================================================================
+  #  백엔드 서비스 (Spring Boot)
+  # ===================================================================
+  backend:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+    container_name: pls-jober-backend
+    network_mode: "host"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+    env_file:
+      - .env
+    # MySQL은 호스트에 설치된 것을 사용하므로 depends_on 제거
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===================================================================
+  #  AI 서비스 (FastAPI)
+  # ===================================================================
+  ai-service:
+    build:
+      context: ./ai
+      dockerfile: Dockerfile
+    container_name: pls-jober-ai
+    network_mode: "host"
+    environment:
+      - PYTHONPATH=/app
+    env_file:
+      - .env
+    # ChromaDB는 호스트에 설치된 것을 사용하므로 volumes 제거
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+
+
+  # ===================================================================
+  #  Nginx 리버스 프록시
+  # ===================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: pls-jober-nginx
+    network_mode: "host"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./front/dist:/usr/share/nginx/html:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - ai-service
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
