@@ -1065,6 +1065,43 @@ const findPosition = (problemArea: any): { start: number, end: number } | null =
   return { start: middlePosition, end: middlePosition }
 }
 
+// 안정적인 위치 찾기 (다중 수정을 위한 백업 함수)
+const findStablePosition = (problemArea: any): { start: number, end: number } | null => {
+  console.log('=== 안정적인 위치 찾기 시작 ===')
+  
+  // 1. 문맥 기반 위치 찾기 시도
+  const contextPosition = findContextBasedPosition(problemArea)
+  if (contextPosition) {
+    console.log('문맥 기반 위치 찾기 성공')
+    return contextPosition
+  }
+  
+  // 2. 문제 텍스트 직접 매칭 시도
+  const template = templateContent.value
+  const problemText = problemArea.problem_text
+  
+  if (problemText && template.includes(problemText)) {
+    const matchIndex = template.indexOf(problemText)
+    const start = matchIndex
+    const end = matchIndex + problemText.length
+    console.log('문제 텍스트 직접 매칭 성공:', { start, end })
+    return { start, end }
+  }
+  
+  // 3. 위치 정보가 있다면 사용
+  if (problemArea.start_position !== undefined && problemArea.end_position !== undefined) {
+    const start = problemArea.start_position
+    const end = problemArea.end_position
+    console.log('위치 정보 사용:', { start, end })
+    return { start, end }
+  }
+  
+  // 4. 템플릿 중간 위치에 삽입 (최후의 수단)
+  const middlePosition = Math.floor(template.length / 2)
+  console.log('중간 위치에 삽입:', { start: middlePosition, end: middlePosition })
+  return { start: middlePosition, end: middlePosition }
+}
+
 // 다중 수정 시 마커 업데이트
 const updateMarkerForMultipleEdits = (problemArea: any, modifiedText: string): boolean => {
   console.log('=== 다중 수정을 위한 마커 업데이트 ===')
@@ -1132,6 +1169,7 @@ const closeRejectionSidebar = () => {
   totalErrors.value = 0
   totalWarnings.value = 0
 }
+
 
 
 
@@ -1459,6 +1497,11 @@ const scrollToBottom = () => {
 }
 
 
+
+// 미리보기용 템플릿 내용 반환
+const getPreviewTemplateContent = () => {
+  return templateContent.value
+}
 
 </script>
 

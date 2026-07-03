@@ -10,7 +10,6 @@ from templateEngine.nodes import (
     extract_blocks_node,
     finalize_node
 )
-
 from services.openai_service import OpenAIService
 from services.chromadb_service import ChromaDBService
 from langgraph.graph import StateGraph, END
@@ -74,13 +73,9 @@ async def run_template_generation_pipeline(
     except UnsuitableMessageError as e:
         # API 레벨에서 직접 처리해야 할 특정 예외는 그대로 다시 발생시킵니다.
         logger.warning(f"파이프라인 실행 중 제어된 예외 발생(부적합 메시지): {e}")
-        return {
-            "pipeline_success": False,
-            "error_type": "UnsuitableMessageError",
-            "error_message": str(e),
-            "generated_template": "부적절한 메시지가 감지되었습니다."
-        }
+        raise e
     except Exception as e:
         logger.error(f"❌ 파이프라인 전체 실행 실패: {e}", exc_info=True)
         # ... (에러 처리 로직)
         return {}
+
