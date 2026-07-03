@@ -8,16 +8,31 @@
             <span class="kakao-header-text">알림톡 도착</span>
           </div>
           <div class="bubble-body">
-            <!-- 생성된 제목 표시 -->
-            <div v-if="props.templateTitle" class="message-title">
-              {{ props.templateTitle }}
-            </div>
             <div
               class="message-text"
+              :class="{ 'expanded': isExpanded }"
               v-html="formattedTemplateContent"
+              @click="handleVariableClick"
             ></div>
           </div>
+          <div
+            v-if="shouldShowToggle"
+            class="toggle-button"
+            @click="toggleExpansion"
+          >
+            <span class="toggle-icon" :class="{ expanded: isExpanded }">▶</span>
+            <span class="toggle-text">{{ isExpanded ? '접기' : '자세히 보기' }}</span>
+          </div>
         </div>
+<<<<<<< HEAD
+
+        <div 
+          class="kakao-message" 
+          v-html="formattedTemplateContent"
+          @click="handleProblemAreaClick"
+        ></div>
+=======
+>>>>>>> c1e1ee42278c5f8af972b279cbf33ee431ac001f
       </div>
     </div>
     <!-- 하단 컨트롤은 TemplateResultView에서 처리됨 -->
@@ -44,11 +59,10 @@ interface KakaoPreviewProps {
   templateTitle?: string
   showVariables: boolean
   variables: string[]
-  variableMapping?: Record<string, string>
   isRejected: boolean
   problemAreas: ProblemArea[]
-  highlightedProblemArea?: ProblemArea | null
-  modifiedAreas?: string[]
+  rejectedVariables?: string[]
+  validationErrors?: any[]
 }
 
 const props = defineProps<KakaoPreviewProps>()
@@ -68,148 +82,96 @@ const formattedTemplateContent = computed(() => {
   // 1) 기본 템플릿
   if (!props.templateContent) {
     const defaultContent = `
-안녕하세요, {{고객명}}님.
+안녕하세요, #{고객명}님.
 
-{{서비스명}} 이용과 관련하여 안내드립니다.
+#{서비스명} 이용과 관련하여 안내드립니다.
 
-• 처리일시: {{처리일시}}
-• 처리상태: {{처리상태}}
-• 담당자: {{담당자명}}
+• 처리일시: #{처리일시}
+• 처리상태: #{처리상태}
+• 담당자: #{담당자명}
 
 문의사항이 있으신 경우 고객센터로 연락 부탁드립니다.
 
 감사합니다.
 `
 
+    // 내용 길이 체크 및 토글 설정 (줄 수 기준)
+    const lines = defaultContent.split('\n').filter(line => line.trim())
+    shouldShowToggle.value = lines.length > 6
+
     return formatTemplateContent(defaultContent.trim())
   }
 
-  // 2) 최소한의 텍스트 정리만 수행 (원본 내용 보존)
+  // 2) 텍스트 정리 및 마커 제거 (미리보기에서는 마커를 보이지 않음)
   let content = props.templateContent ?? ''
   
-  console.log('=== KakaoPreviewComponent 디버깅 ===')
-  console.log('원본 templateContent:', content)
-  console.log('templateContent 길이:', content.length)
+  // 디버깅을 위한 로그
+  console.log('=== KakaoPreviewComponent 템플릿 처리 ===')
+  console.log('원본 템플릿:', content)
   
-  // 필수적인 정리만 수행
+  // 더 정확한 텍스트 정리
   content = content
-    .replace(/\n\s*\n\s*\n/g, '\n\n')                   // 연속된 빈 줄을 2개로 제한
-    .replace(/⟦([^⟦]+)⟧([^⟦]*)⟦\/\1⟧/g, '$2')         // 마커 제거만 (⟦ID⟧내용⟦/ID⟧ → 내용)
+    .replace(/(변수\s*목록\s*:|변수\s*:).*$/s, '')      // 변수 목록 제거
+    .replace(/알림톡\s*템플릿은.*$/s, '')               // 설명 문구 제거
+    .replace(/\n\s*\n\s*\n/g, '\n\n')                   // 빈 줄 정리
+    // 마커 제거 (⟦ID⟧내용⟦/ID⟧ → 내용)
+    .replace(/⟦([^⟦]+)⟧([^⟦]*)⟦\/\1⟧/g, '$2')
     .trim()
   
-  console.log('정리된 content:', content)
-  console.log('정리된 content 길이:', content.length)
-  
+  console.log('정리된 템플릿:', content)
+  console.log('================================')
 
+  // 내용 길이 체크 (줄 수 기준)
+  const lines = content.split('\n').filter(line => line.trim())
+  shouldShowToggle.value = lines.length > 6
 
-  // 3) 변수 처리 - 변수 영역으로 인식하되 원본 내용 보존
-  console.log('=== 변수 처리 시작 ===')
-  console.log('showVariables:', props.showVariables)
-  console.log('variableMapping:', props.variableMapping)
-  
-  // 변수 패턴: {{변수}} 형태만 사용
-  const doubleBracePattern = /\{\{([^}]+)\}\}/g  // {{변수}} 형태
-  
-  if (props.showVariables) {
-    // 변수를 하이라이트로 표시하되 원본 내용 보존
-    console.log('하이라이트 패턴 적용: {{변수}}')
-    
-    // {{변수}} 형태 처리
-    content = content.replace(doubleBracePattern, (match, varName) => {
+  // 3) 변수를 항상 회색으로 처리
+  const varPatterns = [
+    /\{\{([^}]+)\}\}/g,  // {{변수}}
+    /#\{([^}]+)\}/g,      // #{변수}
+    /\{([^}]+)\}/g,       // {변수}
+    /\[([^\]]+)\]/g       // [변수] - 대괄호 형태도 변수로 처리
+  ]
+
+<<<<<<< HEAD
+      if (props.isRejected && props.rejectedVariables && props.rejectedVariables.includes(variableName)) {
+        variableClass += ' rejected-highlight'
+      }
+
+      return `<span class="${variableClass}" data-variable="${variableName}">{${variableName}}</span>`
+=======
+  varPatterns.forEach(pattern => {
+    content = content.replace(pattern, (match, varName) => {
       const variableName = varName.trim()
-      console.log(`변수 하이라이트: "{{${variableName}}}"`)
-      // 원본 내용({{변수}})을 그대로 보여주되 하이라이트만 적용
-      return `<span class="variable-highlight" data-variable="${variableName}">{{${variableName}}}</span>`
+      return `<span class="variable-gray">#{${variableName}}</span>`
+>>>>>>> c1e1ee42278c5f8af972b279cbf33ee431ac001f
     })
-  } else {
-    // 변수를 실제 값으로 치환하지 않고 원본 내용 그대로 표시 (하이라이트 없음)
-    // 변수 영역으로 인식은 하지만 원본 텍스트를 그대로 보여줌
-    console.log('변수 원본 내용 유지 (하이라이트 없음)')
-    // 변수 치환을 하지 않으므로 원본 내용이 그대로 유지됨
-  }
-  
-  console.log('=== 변수 처리 완료 ===')
+  })
 
   // 4) 스마트 포맷팅 - 의미 있는 구조로 변환
-  console.log('포맷팅 전 content:', content)
   content = formatTemplateContent(content)
-  console.log('포맷팅 후 content:', content)
 
+  // 검증 오류가 있을 때 문제 영역 하이라이트
+  if (props.isRejected && props.validationErrors && props.validationErrors.length > 0) {
+    // 템플릿 전체 문제가 있는 경우 전체 하이라이트
+    const hasTemplateErrors = props.validationErrors.some((error: any) =>
+      error.reason.includes('제목') ||
+      error.reason.includes('내용') ||
+      error.reason.includes('광고성') ||
+      error.reason.includes('정형화') ||
+      error.reason.includes('변수가 전혀 사용되지 않음')
+    )
 
-
-  // 특정 문제 영역 하이라이트
-  if (props.highlightedProblemArea) {
-    content = highlightProblemArea(content, props.highlightedProblemArea)
-  }
-
-  // 수정된 영역 하이라이트
-  if (props.modifiedAreas && props.modifiedAreas.length > 0) {
-    content = highlightModifiedAreas(content, props.modifiedAreas)
+    if (hasTemplateErrors) {
+      content = `<div class="template-error-highlight">${content}</div>`
+    }
   }
 
   return content
 })
 
-// 문제 영역 하이라이트 함수 (개선된 버전)
-const highlightProblemArea = (content: string, problemArea: ProblemArea): string => {
-  if (!problemArea.problem_text) return content
-  
-  
-  // 문제 텍스트를 찾아서 하이라이트
-  const problemText = problemArea.problem_text.trim()
-  if (!problemText) {
-    return content
-  }
-  
-  // 1. 정확한 텍스트 매칭 시도
-  if (content.includes(problemText)) {
-    const highlightedText = `<span class="problem-highlight" data-problem-id="${problemArea.area_id}">${problemText}</span>`
-    content = content.replace(problemText, highlightedText)
-    return content
-  }
-  
-  // 2. 부분 매칭 시도 (공백 무시)
-  const normalizedProblemText = problemText.replace(/\s+/g, ' ').trim()
-  const normalizedContent = content.replace(/\s+/g, ' ')
-  
-  if (normalizedContent.includes(normalizedProblemText)) {
-    // 원본 콘텐츠에서 해당 부분을 찾아서 하이라이트
-    const regex = new RegExp(problemText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
-    content = content.replace(regex, `<span class="problem-highlight" data-problem-id="${problemArea.area_id}">${problemText}</span>`)
-    return content
-  }
-  
-  // 3. 키워드 기반 매칭 시도
-  const keywords = problemText.split(/\s+/).filter(word => word.length > 1)
-  if (keywords.length > 0) {
-    keywords.forEach(keyword => {
-      if (content.includes(keyword)) {
-        const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')
-        content = content.replace(regex, `<span class="problem-highlight" data-problem-id="${problemArea.area_id}">${keyword}</span>`)
-      }
-    })
-  }
-  return content
-}
-
-// 수정된 영역 하이라이트 함수
-const highlightModifiedAreas = (content: string, modifiedAreaIds: string[]): string => {
-  // ID 마커로 감싸진 수정된 영역을 찾아서 하이라이트
-  modifiedAreaIds.forEach(areaId => {
-    const markerPattern = new RegExp(`⟦${areaId}⟧([^⟦]*)⟦/${areaId}⟧`, 'g')
-    content = content.replace(markerPattern, (match, text) => {
-      return `<span class="modified-highlight" data-modified-id="${areaId}">${text}</span>`
-    })
-  })
-  
-  return content
-}
-
 // 템플릿 내용 포맷팅 함수
 const formatTemplateContent = (content: string): string => {
-  console.log('formatTemplateContent 입력:', content)
-  
-
   // 화살표를 제대로된 포인트로 변환
   content = content.replace(/▶\s*/g, '▶ ')
   content = content.replace(/→\s*/g, '▶ ')
@@ -240,17 +202,33 @@ const formatTemplateContent = (content: string): string => {
     }
   }
 
-  const result = formattedLines.join('')
-  console.log('formatTemplateContent 출력:', result)
-  return result
+  return formattedLines.join('')
 }
 
+// 토글 기능
+const toggleExpansion = () => {
+  isExpanded.value = !isExpanded.value
+}
 
 // props.variables가 변경될 때마다 editedVariables 업데이트
 watch(() => props.variables, (newVariables) => {
   editedVariables.value = [...newVariables]
 }, { deep: true })
 
+// 문제 영역 클릭 이벤트 처리
+const handleProblemAreaClick = (event: Event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  
+  const target = event.target as HTMLElement
+  
+  // 클릭된 텍스트가 문제 영역에 해당하는지 확인
+  if (props.isRejected && props.problemAreas.length > 0) {
+    // 첫 번째 문제 영역을 클릭한 것으로 처리 (실제로는 더 정교한 매칭이 필요)
+    const problemArea = props.problemAreas[0]
+    emit('problemAreaClick', problemArea)
+  }
+}
 </script>
 
 <style scoped>
@@ -264,13 +242,12 @@ watch(() => props.variables, (newVariables) => {
 .kakao-preview {
   background-color: transparent;
   border-radius: 0.8rem;
-  overflow: visible; /* hidden을 visible로 변경하여 스크롤 허용 */
+  overflow: hidden;
   box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.15);
-  width: 320px; /* 16글자 너비 (한글 1글자 = 20px, 공백 반칸 고려) */
-
+  width: 400px;
   flex-shrink: 0;
   align-self: center;
-  max-height: 60vh; /* 최대 높이를 뷰포트의 60%로 제한 */
+  max-height: none;
   display: flex;
   flex-direction: column;
 }
@@ -282,17 +259,13 @@ watch(() => props.variables, (newVariables) => {
   display: flex;
   flex-direction: column;
   background-color: transparent;
-  min-height: 0; /* flex 아이템이 내용에 맞게 축소될 수 있도록 함 */
 }
 
 .message-bubble {
   background-color: #ffffff;
   border-radius: 0.8rem;
-  overflow: visible; /* hidden을 visible로 변경 */
+  overflow: hidden;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  max-height: 100%; /* 부모 컨테이너 높이에 맞춤 */
-  display: flex;
-  flex-direction: column;
 }
 
 .kakao-header {
@@ -311,28 +284,67 @@ watch(() => props.variables, (newVariables) => {
 
 
 
+.template-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #000000;
+  display: block;
+}
 
 .bubble-body {
   padding: 0.8rem 1rem;
   background-color: white;
-  overflow-y: auto; /* 내용이 길어질 때 스크롤 추가 */
-  flex: 1; /* 남은 공간을 모두 차지 */
-  max-height: 50vh; /* 최대 높이 설정 */
-}
-
-.message-title {
-  font-weight: 600;
-  font-size: 1rem;
-  color: #333;
-  margin-bottom: 0.8rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #f0f0f0;
 }
 
 .message-text {
   font-size: 0.9rem;
   line-height: 1.6;
   color: #333;
+  transition: max-height 0.3s ease;
+}
+
+.message-text:not(.expanded) {
+  max-height: 8rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.message-text.expanded {
+  max-height: none;
+  overflow: visible;
+}
+
+.toggle-button {
+  background-color: #f7f7f7;
+  padding: 0.7rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  border-top: 1px solid #e0e0e0;
+  transition: background-color 0.2s ease;
+}
+
+.toggle-button:hover {
+  background-color: #eeeeee;
+}
+
+.toggle-icon {
+  color: #888;
+  font-size: 0.7rem;
+  transition: transform 0.2s ease;
+  transform: rotate(0deg);
+}
+
+.toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.toggle-text {
+  color: #666;
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 /* 메시지 라인 스타일 */
@@ -361,21 +373,6 @@ watch(() => props.variables, (newVariables) => {
   display: inline;
 }
 
-/* 노란색 변수 하이라이트 스타일 */
-:deep(.variable-highlight) {
-  background-color: #FFE066;
-  color: #333333;
-  border: none; /* border 제거하여 레이아웃 영향 최소화 */
-  border-radius: 2px;
-  padding: 0; /* padding 제거하여 레이아웃 영향 최소화 */
-  margin: 0; /* margin 제거 */
-  font-weight: inherit; /* 부모와 동일한 font-weight 사용 */
-  font-size: inherit; /* 부모와 동일한 font-size 사용 */
-  line-height: inherit; /* 부모와 동일한 line-height 사용 */
-  display: inline;
-  transition: background-color 0.2s ease; /* background-color만 transition */
-}
-
 :deep(.disclaimer) {
   color: #888888;
   font-size: 0.75rem;
@@ -396,12 +393,6 @@ watch(() => props.variables, (newVariables) => {
 .kakao-content::-webkit-scrollbar-thumb { background: #94a3b1; border-radius: 0.2rem; }
 .kakao-content::-webkit-scrollbar-thumb:hover { background: #7a8896; }
 
-/* 버블 바디 스크롤바 */
-.bubble-body::-webkit-scrollbar { width: 0.4rem; }
-.bubble-body::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 0.2rem; }
-.bubble-body::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 0.2rem; }
-.bubble-body::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
-
 /* 변수 스타일 */
 :deep(.variable) {
   color: #888888;
@@ -409,76 +400,48 @@ watch(() => props.variables, (newVariables) => {
   font-weight: normal;
   display: inline;
   transition: all 0.2s ease;
-  margin: 0 1px;
 }
 
-:deep(.variable-gray:hover) {
-  background-color: #e5e7eb;
-  border-color: #9ca3af;
+:deep(.variable.highlighted) {
+  color: #888888 !important;
+  background-color: transparent !important;
+  font-weight: normal !important;
 }
 
-:deep(.variable-highlight:hover) {
-  background-color: #FFD700;
-  /* transform과 border 제거하여 레이아웃 영향 없음 */
-}
-
-
-/* 문제 영역 하이라이트 */
-:deep(.problem-highlight) {
-  background-color: #fff3cd;
-  color: #856404;
-  border: none; /* border 제거 */
-  border-radius: 2px;
-  padding: 0; /* padding 제거 */
-  margin: 0; /* margin 제거 */
-  font-weight: inherit; /* 부모와 동일한 font-weight */
-  font-size: inherit; /* 부모와 동일한 font-size */
-  line-height: inherit; /* 부모와 동일한 line-height */
-  animation: highlight-pulse 2s infinite;
+:deep(.variable.rejected-highlight) {
+  background-color: #ffebee;
+  color: #c62828;
+  border: 1px solid #f44336;
   cursor: pointer;
-  display: inline;
+  animation: pulse 2s infinite;
 }
 
-@keyframes highlight-pulse {
-  0% { 
-    background-color: #fff3cd;
-  }
-  50% { 
-    background-color: #ffeaa7;
-  }
-  100% { 
-    background-color: #fff3cd;
-  }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7); }
+  70% { box-shadow: 0 0 0 0.5rem rgba(244, 67, 54, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
 }
 
-/* 수정된 영역 하이라이트 */
-:deep(.modified-highlight) {
-  background-color: #d4edda;
-  color: #155724;
-  border: none; /* border 제거 */
-  border-radius: 2px;
-  padding: 0; /* padding 제거 */
-  margin: 0; /* margin 제거 */
-  font-weight: inherit; /* 부모와 동일한 font-weight */
-  font-size: inherit; /* 부모와 동일한 font-size */
-  line-height: inherit; /* 부모와 동일한 line-height */
-  animation: modified-pulse 3s infinite;
-  display: inline;
+:deep(.template-error-highlight) {
+  border: 2px solid #ff5252;
+  border-radius: 0.4rem;
+  background: rgba(255, 82, 82, 0.05);
+  padding: 0.3rem;
+  margin: -0.3rem;
+  animation: pulse-red 2s ease-in-out infinite;
 }
 
-@keyframes modified-pulse {
-  0% { 
-    background-color: #d4edda;
+@keyframes pulse-red {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.4);
   }
-  50% { 
-    background-color: #c3e6cb;
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 82, 82, 0);
   }
-  100% { 
-    background-color: #d4edda;
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 82, 82, 0);
   }
 }
-
-
 
 .disclaimer {
   font-size: 0.8rem;

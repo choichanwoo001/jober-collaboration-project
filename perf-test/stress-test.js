@@ -1,0 +1,51 @@
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+// 스트레스 테스트: VU 100 → 200 → 300 → 500 → 700 → 1000 (실패율/p95 급악 구간 탐색)
+export const options = {
+  stages: [
+    { duration: '30s', target: 100 },   // 100 VU
+    { duration: '1m', target: 100 },
+    { duration: '30s', target: 200 },   // 200 VU
+    { duration: '1m', target: 200 },
+    { duration: '30s', target: 300 },   // 300 VU
+    { duration: '1m', target: 300 },
+    { duration: '30s', target: 500 },   // 500 VU
+    { duration: '1m', target: 500 },
+    { duration: '30s', target: 700 },   // 700 VU
+    { duration: '1m', target: 700 },
+    { duration: '30s', target: 1000 },  // 1000 VU
+    { duration: '1m', target: 1000 },
+    { duration: '30s', target: 0 },    // 종료
+  ],
+  thresholds: {
+    http_req_failed: ['rate<0.51'],  // 한계점 탐색용으로 완화 (51% 미만)
+  },
+};
+
+const BACKEND_BASE = __ENV.BACKEND_URL || 'http://localhost:8080';
+const AI_BASE = __ENV.AI_URL || 'http://localhost:8000';
+
+const AI_GENERATE_PATH = __ENV.AI_GENERATE_PATH || '/ai/template/generate';
+const AI_USER_MESSAGE =
+  __ENV.AI_USER_MESSAGE ||
+  '주문하신 상품이 오늘 발송되었습니다. 송장번호는 123-456-789 입니다. 감사합니다.';
+
+export default function () {
+  const backendRes = http.get(`${BACKEND_BASE}/`);
+  check(backendRes, { 'backend status 200': (r) => r.status === 200 });
+
+  sleep(0.5);
+
+  const payload = JSON.stringify({ userMessage: AI_USER_MESSAGE });
+  const params = { headers: { 'Content-Type': 'application/json' } };
+  const aiRes = http.post(`${AI_BASE}${AI_GENERATE_PATH}`, payload, params);
+  check(aiRes, { 'ai generate status 200': (r) => r.status === 200 });
+
+  // 실패 시 로그 (429 = API rate limit, 5xx = 서버/프록시 오류)
+  if (aiRes.status !== 200) {
+    console.log(`[AI] status=${aiRes.status} body=${(aiRes.body || '').slice(0, 200)}`);
+  }
+
+  sleep(0.5);
+}

@@ -21,7 +21,8 @@ load_dotenv()
 class ChromaDBService:
     def __init__(self):
         self.client = None
-        self.collections: Dict[str, Any] = {}
+        self.approved_collection = None
+        self.pulblic_templates = None
         self._connect()
 
     def _connect(self):
@@ -41,16 +42,10 @@ class ChromaDBService:
                 self.client = chromadb.PersistentClient(path=persist_dir)
                 logger.info(f"✅ 로컬 ChromaDB 연결 성공: {persist_dir}")
 
-            required_collections = [
-                "approved_templates",
-                "public_templates",   # 오타 pulblic → public
-                "denied_templates",
-                "blacklist",
-                "rejection_reasons",  # 반려 사유 컬렉션 추가
-            ]
-            for col in required_collections:
-                self.collections[col] = self.client.get_or_create_collection(col)
-                logger.info(f"✅ 컬렉션 준비 완료: {col}")
+            self.approved_collection = self.client.get_or_create_collection("approved_templates")
+            self.pulblic_templates = self.client.get_or_create_collection("pulblic_templates")
+            logger.info("✅ 컬렉션('approved_templates', 'pulblic_templates') 로드 완료")
+            self.is_mock = False
         except Exception as e:
             logger.error(f"❌ ChromaDB 연결 또는 컬렉션 로드 실패: {e}", exc_info=True)
             self.client = None
@@ -76,7 +71,7 @@ class ChromaDBService:
         템플릿 검색 공통 함수
         
         Args:
-            collection_name: 검색할 컬렉션 이름 ('approved_templates' 또는 'public_templates')
+            collection_name: 검색할 컬렉션 이름 ('approved_templates' 또는 'pulblic_templates')
             query_text: 검색 쿼리 텍스트
             top_k: 반환할 결과 개수
             category_sub: 카테고리 필터링 (approved_templates에서만 사용)
@@ -85,20 +80,13 @@ class ChromaDBService:
         Returns:
             List[Dict]: 검색된 템플릿 리스트 (유사도 기준 정렬됨)
         """
-
         # 컬렉션 선택
         if collection_name == "approved_templates":
-            collection = self.collections.get("approved_templates")
+            collection = self.approved_collection
             logger.info("  - 검색 대상: 승인된 템플릿")
-        elif collection_name == "public_templates":
-            collection = self.collections.get("public_templates")
+        elif collection_name == "pulblic_templates":
+            collection = self.pulblic_templates
             logger.info("  - 검색 대상: 공용 템플릿")
-        elif collection_name == "denied_templates":
-            collection = self.collections.get("denied_templates")
-            logger.info("  - 검색 대상: 반려된 템플릿")
-        elif collection_name == "rejection_reasons":
-            collection = self.collections.get("rejection_reasons")
-            logger.info("  - 검색 대상: 반려 사유")
         else:
             logger.error(f"❌ 알 수 없는 컬렉션: {collection_name}")
             return []
@@ -137,7 +125,7 @@ class ChromaDBService:
                     similarity = 1.0 - float(dist)
                     
                     # 결과 형식에 따른 데이터 구조 결정
-                    if result_format == "legacy" and collection_name == "public_templates":
+                    if result_format == "legacy" and collection_name == "pulblic_templates":
                         # 공용 템플릿 형식 (text, metadata 필드 사용)
                         template_data = {
                             'id': template_id,

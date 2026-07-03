@@ -47,8 +47,8 @@ engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
     pool_recycle=3600,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=30,      # 부하 테스트 시 동시 커넥션 증가 (기본 10 → 30)
+    max_overflow=70,   # overflow 20 → 70, 총 최대 100개
     echo=False
 )
 

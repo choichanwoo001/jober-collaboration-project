@@ -76,4 +76,11 @@ public class TemplateValidationResponseDto {
         response.setValidationErrors(validationErrors);
         return response;
     }
+    
+    public static TemplateValidationResponseDto failure(String message) {
+        TemplateValidationResponseDto response = new TemplateValidationResponseDto();
+        response.setSuccess(false);
+        response.setMessage(message);
+        return response;
+    }
 }

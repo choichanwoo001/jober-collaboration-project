@@ -6,9 +6,11 @@ package com.example.service;
 import com.example.dto.LoginRequest;
 import com.example.dto.SignupRequest;
 import com.example.entity.Account;
+import com.example.exception.user.UserErrorCode;
+import com.example.exception.user.UserException;
 import com.example.repository.AccountRepository;
+import com.example.service.password.PasswordService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +21,7 @@ import java.util.Map;
 public class AuthService {
 
     private final AccountRepository accountRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordService passwordService;
     private final TokenService tokenService;
 
     /**
@@ -28,16 +30,16 @@ public class AuthService {
     @Transactional
     public Account registerUser(SignupRequest request) {
         if (accountRepository.existsByEmail(request.getEmail())) {
-            throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
+            throw new UserException(UserErrorCode.EMAIL_DUPLICATED);
         }
         if (accountRepository.existsByUserName(request.getUsername())) {
-            throw new IllegalArgumentException("이미 사용 중인 사용자 이름입니다.");
+            throw new UserException(UserErrorCode.USER_ALREADY_EXISTS);
         }
 
         Account account = new Account();
         account.setUserName(request.getUsername());
         account.setEmail(request.getEmail());
-        account.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        account.setPasswordHash(passwordService.encode(request.getPassword()));
 
         // 기본값 세팅
         account.setRole("USER");
@@ -52,10 +54,11 @@ public class AuthService {
     @Transactional(readOnly = true)
     public Map<String, String> login(LoginRequest request) {
         Account account = accountRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다."));
+                .orElseThrow(() -> new UserException(UserErrorCode.INVALID_EMAIL_PASSWORD));
 
-        if (!passwordEncoder.matches(request.getPassword(), account.getPasswordHash())) {
-            throw new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다.");
+        if (!passwordService.matches(request.getPassword(), account.getPasswordHash())) {
+            throw new UserException(UserErrorCode.INVALID_EMAIL_PASSWORD);
+
         }
 
         // TokenService를 통해 토큰 쌍 생성

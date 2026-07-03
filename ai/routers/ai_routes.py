@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional, Dict, Any
+import os
 import re
 from services.openai_service import OpenAIService
 
@@ -26,8 +27,19 @@ async def openai_chat(
         messages = [{"role": "user", "content": request.message}]
         response = await openai_service.chat_completion(messages, request.model)
         return ChatResponse(response=response, model=request.model)
+
+    # 이미 의도한 HTTPException이면 절대 덮어쓰지 말기
+    except HTTPException:
+        raise
+
+    # OpenAI 관련 예외는 따로 처리(최소한 500으로 뭉개지지 않게)
+    except OpenAIError as e:
+        # 여기서 "정교한 매핑(429/503 등)"까지 하고 싶으면 가능
+        raise HTTPException(status_code=502, detail=f"OpenAI upstream error: {str(e)}")
+
+    # 그 외는 진짜 내부 오류
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="AI 서비스 내부 오류") from e
 
 
 # 템플릿 수정 라우트
@@ -36,7 +48,18 @@ async def modify_template(
     request: TemplateModificationRequest,
     openai_service: OpenAIService = Depends(get_openai_service)
 ):
-    """채팅을 통한 템플릿 수정"""
+    """채팅을 통한 템플릿 수정. MOCK_OPENAI=1 이면 OpenAI 호출 없이 더미 응답 반환 (k6 수정 테스트용)."""
+    if os.getenv("MOCK_OPENAI", "").lower() in ("1", "true", "yes"):
+        variables = list(set(re.findall(r"\{\{([^}]+)\}\}", request.current_template or "")))
+        variables = [v.strip() for v in variables]
+        return TemplateModificationResponse(
+            modified_template=(request.current_template or "") + "\n[Mock 수정]",
+            template_title=request.current_template_title or "",
+            variables=variables,
+            explanation="[Mock] MOCK_OPENAI=1 로 수정 응답을 반환했습니다.",
+            model="mock",
+        )
+
     try:
         # 채팅 히스토리를 포함한 프롬프트 구성
         chat_context = ""
@@ -112,7 +135,12 @@ async def modify_template(
             model="gpt-4o-mini"
         )
 
+    except HTTPException:
+        raise  # 400/422/… 의미 보존
+
+    except OpenAIError as e:
+        raise HTTPException(status_code=502, detail=f"OpenAI upstream error: {str(e)}")
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="템플릿 수정 중 서버 오류") from e
