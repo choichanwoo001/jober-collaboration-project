@@ -28,7 +28,7 @@ class ValidationPipeline:
         self.constraint_validator = constraint_validator  # 외부에서 주입받음
         self.semantic_validator = SemanticValidator(chromadb_service=chromadb_service)
         
-    def validate(self, template_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def validate(self, template_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         2단계 검증을 순차적으로 실행
         
@@ -58,7 +58,7 @@ class ValidationPipeline:
         
         # 1차 검증: 제약 검증
         print("🔍 1차 검증: 제약 검증 실행 중...")
-        constraint_result = self.constraint_validator.validate(template_data)
+        constraint_result = await self.constraint_validator.validate(template_data)
         results['constraint_result'] = constraint_result
         
         if not constraint_result.is_valid:

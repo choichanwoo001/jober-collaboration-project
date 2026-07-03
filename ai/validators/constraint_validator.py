@@ -11,6 +11,7 @@ import re
 from typing import Dict, Any, List
 import json
 import logging
+import asyncio
 
 import sys
 import os
@@ -43,7 +44,7 @@ class ConstraintValidator:
             logger.exception("❌ ConstraintValidator 초기화 실패")
             raise
 
-    def validate(self, template_data: Dict[str, Any]) -> ValidationResult:
+    async def validate(self, template_data: Dict[str, Any]) -> ValidationResult:
         """
         1차 검증: 알림톡 승인 규칙 기반 검증 (내부 검증 단계는 비동기 병렬 처리)
         
@@ -68,24 +69,15 @@ class ConstraintValidator:
         logger.debug(f"입력 데이터 keys: {list(template_data.keys())}")
 
         try:
-            # 3개 검증 단계를 비동기로 병렬 실행
-            import asyncio
+            # 3개 검증을 병렬로 실행
+            tasks = [
+                self._check_informational_message_requirements_async(template_data),
+                self._check_variable_usage_rules_async(template_data),
+                self._check_other_template_rules_async(template_data)
+            ]
             
-            # 현재 이벤트 루프가 실행 중인지 확인
-            try:
-                loop = asyncio.get_running_loop()
-                # 이미 실행 중인 루프가 있으면 새 스레드에서 실행
-                import concurrent.futures
-                
-                def run_in_thread():
-                    return asyncio.run(self._run_async_validations(template_data))
-                
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(run_in_thread)
-                    results = future.result()
-            except RuntimeError:
-                # 실행 중인 루프가 없으면 새 루프 생성
-                results = asyncio.run(self._run_async_validations(template_data))
+            # 모든 검증을 병렬로 실행 (오류가 발생해도 다른 검증은 계속 진행)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
             
             # 결과 처리
             errors = []
@@ -168,28 +160,6 @@ class ConstraintValidator:
                 details={"exception": str(e)}
             )
 
-    async def _run_async_validations(self, template_data: Dict[str, Any]) -> List:
-        """
-        4개 검증 단계를 비동기로 병렬 실행
-        
-        Args:
-            template_data: 검증할 템플릿 데이터
-            
-        Returns:
-            List: 각 검증 단계의 결과 리스트
-        """
-        import asyncio
-        
-        # 3개 검증을 병렬로 실행
-        tasks = [
-            self._check_informational_message_requirements_async(template_data),
-            self._check_variable_usage_rules_async(template_data),
-            self._check_other_template_rules_async(template_data)
-        ]
-        
-        # 모든 검증을 병렬로 실행 (오류가 발생해도 다른 검증은 계속 진행)
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return results
 
     async def _check_informational_message_requirements_async(self, template_data: Dict[str, Any]) -> tuple[List[str], List[str], List[Dict[str, Any]]]:
         """정보성 메시지 요건 검증 (비동기 버전)"""
@@ -204,7 +174,7 @@ class ConstraintValidator:
             prompt = get_informational_message_validation_prompt(category, templateTitle, templateContent)
             
             # 비동기 함수 호출
-            response = await self.openai_service.chat_completion([
+            response = await self.openai_service.chat_completion_blocking([
                 {"role": "system", "content": get_system_prompt('informational')},
                 {"role": "user", "content": prompt}
             ])
@@ -235,7 +205,6 @@ class ConstraintValidator:
         
         return errors, warnings, details
 
-
     async def _check_variable_usage_rules_async(self, template_data: Dict[str, Any]) -> tuple[List[str], List[str], List[Dict[str, Any]], List[str]]:
         """변수 사용 규칙 검증 (비동기 버전)"""
         errors, warnings, details = [], [], []
@@ -255,7 +224,7 @@ class ConstraintValidator:
             prompt = get_variable_usage_validation_prompt(templateContent, detected_variables, variable_names)
             
             # 비동기 함수 호출
-            response = await self.openai_service.chat_completion([
+            response = await self.openai_service.chat_completion_blocking([
                 {"role": "system", "content": get_system_prompt('variable_usage')},
                 {"role": "user", "content": prompt}
             ])
@@ -304,7 +273,7 @@ class ConstraintValidator:
             prompt = get_template_writing_validation_prompt(templateTitle, templateContent)
             
             # 비동기 함수 호출
-            response = await self.openai_service.chat_completion([
+            response = await self.openai_service.chat_completion_blocking([
                 {"role": "system", "content": get_system_prompt('template_writing')},
                 {"role": "user", "content": prompt}
             ])
@@ -334,4 +303,3 @@ class ConstraintValidator:
             warnings.append("기타 템플릿 작성 규칙 검증 중 오류가 발생했습니다.")
         
         return errors, warnings, details
-

@@ -76,7 +76,7 @@ class AlimtalkValidationService:
         try:
             # 검증 실행
             template_data = request.template.dict()
-            result = self.validation_pipeline.validate(template_data)
+            result = await self.validation_pipeline.validate(template_data)
             
             # 응답 생성
             if result['final_result'].is_valid:
