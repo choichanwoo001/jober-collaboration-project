@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
@@ -134,12 +136,12 @@ public class KakaoController {
 
             // 프론트엔드로 토큰 전달하여 리다이렉트
             String redirectUrl = String.format(
-                "%s?accessToken=%s&refreshToken=%s&userId=%s&role=%s",
+                "%s#accessToken=%s&refreshToken=%s&userId=%s&role=%s",
                 frontendUrl,
-                tokens.get("accessToken"),
-                tokens.get("refreshToken"),
-                tokens.get("userId"),
-                tokens.get("role")
+                encode(tokens.get("accessToken")),
+                encode(tokens.get("refreshToken")),
+                encode(tokens.get("userId")),
+                encode(tokens.get("role"))
             );
 
             return ResponseEntity.status(302)
@@ -151,5 +153,9 @@ public class KakaoController {
                     .header("Location", frontendUrl + "?error=" + e.getMessage())
                     .build();
         }
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
     }
 }

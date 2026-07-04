@@ -34,9 +34,6 @@ services:
     env_file:
       - .env
     # ChromaDB 서비스가 정상 실행된 후 AI 서비스가 시작되도록 설정
-    depends_on:
-      chromadb:
-        condition: service_healthy
     # ChromaDB는 호스트에 설치된 것을 사용하므로 volumes 제거
     restart: unless-stopped
     healthcheck:
@@ -66,7 +63,7 @@ services:
         condition: service_healthy # AI 서비스가 정상 실행된 후 Nginx 시작
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

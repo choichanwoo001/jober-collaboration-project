@@ -127,6 +127,7 @@ public class TemplateController {
     /**
      * AI를 사용하여 템플릿을 수정합니다. (POST /api/template/modify)
      */
+    @RequireAuth
     @PostMapping("/template/modify")
     public ResponseEntity<FastAPIResponseDto> modifyTemplate(
             @Valid @RequestBody TemplateRequestDto requestDto

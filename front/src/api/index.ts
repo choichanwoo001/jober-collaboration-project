@@ -155,7 +155,7 @@ export const templateApi = {
   // 템플릿 검증 (백엔드 API를 통해)
   validateTemplate: (templateContent: string, variableList: string[], category?: string, userMessage?: string, templateTitle?: string, templateId?: string) => {
     // variableList를 딕셔너리 배열로 변환
-    const variableDictList = convertToStringArray(variableList)
+    const variableDictList = variableList
 
     
     // 백엔드 ValidationRequest 형식에 맞게 데이터 변환
@@ -169,7 +169,7 @@ export const templateApi = {
     }
     
     
-    return aiApi.post('/template/validate', validationRequest)
+    return api.post('/template/validate', validationRequest)
   },
   
   // 템플릿 수정 요청 (채팅을 통한)
@@ -190,7 +190,7 @@ export const templateApi = {
   },
 
   // 템플릿 저장 (검증 없이 바로 저장)
-  saveTemplate: (templateContent: string, variableList: string[], category: string, userMessage: string, templateTitle: string) => {
+  saveTemplate: (templateContent: string, variableList: string[], category: string, userMessage: string, templateTitle: string, templateId?: string) => {
     // variableList를 딕셔너리 배열로 변환
     const variableDictList = convertToStringArray(variableList)
 
@@ -200,11 +200,26 @@ export const templateApi = {
 
       category: category,
       userMessage: userMessage,
-      templateTitle: templateTitle
+      templateTitle: templateTitle,
+      templateId: templateId
     }
 
 
     return api.post('/template/save', saveRequest)
+  },
+
+  createTemplate: (templateContent: string, variableList: string[], category: string, userMessage: string, templateTitle: string) => {
+    const variableDictList = convertToStringArray(variableList)
+
+    const createRequest = {
+      templateContent: templateContent,
+      variableList: variableDictList,
+      category: category,
+      userMessage: userMessage,
+      templateTitle: templateTitle
+    }
+
+    return api.post('/template/create', createRequest)
   },
 }
 

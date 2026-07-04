@@ -32,9 +32,8 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authz -> authz
-                        .requestMatchers("/", "/health", "/api/auth/**", "/favicon.ico", "/static/**", "/error", "/metrics/**").permitAll()
-                        /* TODO : 관리자 ROLE을 부여 받은 사람만 metric을 볼 수 있는 구조로 변경
-                        .requestMatchers("/metrics/**").hasRole("ADMIN")*/
+                        .requestMatchers("/", "/health", "/api/auth/**", "/favicon.ico", "/static/**", "/error").permitAll()
+                        .requestMatchers("/metrics/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

@@ -54,14 +54,14 @@ public class AIService {
             aiRequest.put("category", validationRequest.get("category"));
             aiRequest.put("userMessage", validationRequest.get("userMessage"));
             aiRequest.put("templateTitle", validationRequest.get("templateTitle"));
-            aiRequest.put("variableList", validationRequest.get("variableList"));
+            aiRequest.put("variableList", convertVariableList(validationRequest.get("variableList")));
             
             log.info("AI 서버로 전송할 요청: {}", aiRequest);
 
             // FastAPI 정상 응답을 받아 그대로 TemplateService에 넘김
             @SuppressWarnings("unchecked")
             Map<String, Object> result = webClient.post()
-                    .uri("/alimtalk/validate")
+                    .uri("/ai/template/validate")
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(aiRequest)
                     .retrieve()
@@ -94,6 +94,36 @@ public class AIService {
             log.error("[AI] validate 처리 중 예기치 못한 오류", e);
             throw new ExternalApiException(ExternalErrorCode.AI_SERVER_ERROR);
         }
+    }
+
+    private java.util.List<java.util.Map<String, String>> convertVariableList(Object variableListObj) {
+        java.util.List<java.util.Map<String, String>> variables = new java.util.ArrayList<>();
+        if (!(variableListObj instanceof java.util.List<?> variableList)) {
+            return variables;
+        }
+
+        for (Object variable : variableList) {
+            if (variable == null) {
+                continue;
+            }
+
+            java.util.Map<String, String> variableMap = new java.util.HashMap<>();
+            if (variable instanceof java.util.Map<?, ?> map) {
+                Object key = map.get("variableKey");
+                Object value = map.get("variableValue");
+                variableMap.put("variableKey", key == null ? "" : key.toString());
+                variableMap.put("variableValue", value == null ? "" : value.toString());
+            } else {
+                variableMap.put("variableKey", variable.toString());
+                variableMap.put("variableValue", "");
+            }
+
+            if (!variableMap.get("variableKey").isBlank()) {
+                variables.add(variableMap);
+            }
+        }
+
+        return variables;
     }
 
     /**

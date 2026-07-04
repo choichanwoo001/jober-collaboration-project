@@ -22,7 +22,8 @@ public class AsyncConfig {
         executor.setMaxPoolSize(32);
         executor.setQueueCapacity(2000);
         executor.setThreadNamePrefix("async-");
-
+        executor.initialize();
+        return executor;
     }
 
     @Bean(name = "categoryUsageExecutor")

@@ -1065,6 +1065,37 @@ const findPosition = (problemArea: any): { start: number, end: number } | null =
   return { start: middlePosition, end: middlePosition }
 }
 
+const findContextBasedPosition = (problemArea: any): { start: number, end: number } | null => {
+  const template = templateContent.value
+  const searchMethods = problemArea.search_methods
+
+  if (!searchMethods) {
+    return null
+  }
+
+  const exactText = searchMethods.exact_text
+  const contextBefore = searchMethods.context_before || ''
+  const contextAfter = searchMethods.context_after || ''
+
+  if (exactText && (contextBefore || contextAfter)) {
+    const fullPattern = contextBefore + exactText + contextAfter
+    const matchIndex = template.indexOf(fullPattern)
+    if (matchIndex !== -1) {
+      const start = matchIndex + contextBefore.length
+      return { start, end: start + exactText.length }
+    }
+  }
+
+  if (exactText) {
+    const matchIndex = template.indexOf(exactText)
+    if (matchIndex !== -1) {
+      return { start: matchIndex, end: matchIndex + exactText.length }
+    }
+  }
+
+  return null
+}
+
 // 안정적인 위치 찾기 (다중 수정을 위한 백업 함수)
 const findStablePosition = (problemArea: any): { start: number, end: number } | null => {
   console.log('=== 안정적인 위치 찾기 시작 ===')

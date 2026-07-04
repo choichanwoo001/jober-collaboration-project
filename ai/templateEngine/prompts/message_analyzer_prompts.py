@@ -152,14 +152,10 @@ class TypePromptBuilder(BasePromptBuilder):
         "type": "CHANNEL_ADD",
         "explain_type": "채널 추가 정보 포함"
         }
-
-        # 메시지가 비어있으면 보호 메시지만 반환
-        if not messages:
-            return [protection_message]
-        else:
-            messages.insert(0, protection_message)
-
-        return messages
+        """
+            }
+        ]
+        return prompt
 
 
 # builders.py에서 필요한 클래스들을 import

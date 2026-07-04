@@ -41,6 +41,7 @@ interface ProblemArea {
 
 interface KakaoPreviewProps {
   templateContent?: string
+  templateTitle?: string
   showVariables: boolean
   variables: string[]
   isRejected: boolean
@@ -203,8 +204,8 @@ const formatTemplateContent = (content: string): string => {
   content = content.replace(/\-\s+/g, '▶ ')  // "- " 형식도 처리
   
   // 기본 줄바꿈을 먼저 처리
-  let lines = content.split('\n')
-  let formattedLines: string[] = []
+  const lines = content.split('\n')
+  const formattedLines: string[] = []
 
   for (let line of lines) {
     line = line.trim()

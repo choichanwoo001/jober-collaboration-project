@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 # 환경 변수 로드
 load_dotenv()
 from api.routes import template_routes
-from routers import ai_routes
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -63,17 +62,20 @@ app.include_router(template_routes.router, prefix="/ai")
 # AI 서비스 라우터 등록 (템플릿 수정 기능 포함)
 app.include_router(ai_routes.router)
 
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("AI_CORS_ORIGINS", "http://localhost:5173,https://pls-jober.shop").split(",")
+    if origin.strip()
+]
+
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# 라우터 등록
-app.include_router(ai_routes.router)
 
 # 알림톡 검증 라우터 추가
 try:

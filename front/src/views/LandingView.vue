@@ -157,10 +157,11 @@ const handleKakaoLogin = async () => {
 // 카카오 로그인/로그아웃 콜백 처리
 onMounted(() => {
   const urlParams = new URLSearchParams(window.location.search)
-  const accessToken = urlParams.get('accessToken')
-  const refreshToken = urlParams.get('refreshToken')
-  const userId = urlParams.get('userId')
-  const role = urlParams.get('role')
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const accessToken = hashParams.get('accessToken') || urlParams.get('accessToken')
+  const refreshToken = hashParams.get('refreshToken') || urlParams.get('refreshToken')
+  const userId = hashParams.get('userId') || urlParams.get('userId')
+  const role = hashParams.get('role') || urlParams.get('role')
   const error = urlParams.get('error')
   const logout = urlParams.get('logout')
 

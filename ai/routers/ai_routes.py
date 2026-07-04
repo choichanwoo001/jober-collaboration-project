@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Optional, Dict, Any
 import os
 import re
+import traceback
+from openai import OpenAIError
 from services.openai_service import OpenAIService
 
 from services.chromadb_service import ChromaDBService

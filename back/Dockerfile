@@ -27,6 +27,9 @@ RUN ./gradlew build -x test
 # 실제 실행에 필요한 JRE만 포함된 가벼운 이미지를 사용합니다.
 FROM eclipse-temurin:17-jre-jammy
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # 빌드 단계에서 생성된 JAR 파일을 복사합니다.
 COPY --from=builder /workspace/app/build/libs/*.jar app.jar
 

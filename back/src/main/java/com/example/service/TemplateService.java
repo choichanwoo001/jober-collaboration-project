@@ -28,55 +28,68 @@ public class TemplateService {
     // 수정에서 제출하기 버튼 클릭 시 템플릿 저장
     @Transactional
     public TemplateSaveResponseDto saveTemplate(TemplateSaveRequestDto requestDto, UserDto currentUser) {
+        return upsertTemplate(requestDto, currentUser);
+    }
+
+    @Transactional
+    public TemplateSaveResponseDto upsertTemplate(TemplateSaveRequestDto requestDto, UserDto currentUser) {
         try {
-            // 사용자 계정 조회
             Account account = accountRepository.findById(currentUser.getAccountId())
-                    .orElseThrow(() -> new ResourceNotFoundException("사용자를 찾을 수 없습니다."));
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found."));
 
-            // 카테고리 조회
             Category category = findCategoryByName(requestDto.getCategory());
+            Template template;
 
-            // Template 생성
-            Template template = Template.builder()
-                    .account(account)
-                    .templateContent(requestDto.getTemplateContent())
-                    .category(category)
-                    .userMessage(requestDto.getUserMessage()) // 사용자 원본 요청 저장
-                    .autoTitle(requestDto.getTemplateTitle()) // 템플릿 제목 저장
-                    .status("검증 중")
-                    .build();
+            if (requestDto.getTemplateId() != null && !requestDto.getTemplateId().isBlank()) {
+                Long templateId = Long.parseLong(requestDto.getTemplateId());
+                template = templateRepository.findByIdWithDetails(templateId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Template not found with id: " + templateId));
 
-            if (requestDto.getVariableList() != null && !requestDto.getVariableList().isEmpty()) {
-                // 딕셔너리 배열에서 유효한 변수만 필터링
-                List<Map<String, String>> validVariables = requestDto.getVariableList().stream()
-                        .filter(variableMap -> variableMap != null && 
-                                variableMap.get("variableKey") != null && 
-                                !variableMap.get("variableKey").trim().isEmpty())
-                        .toList();
-                
-                if (!validVariables.isEmpty()) {
-                    for (Map<String, String> variableMap : validVariables) {
-                        String variableKey = variableMap.get("variableKey").trim(); // 앞뒤 공백 제거
-                        Var variable = Var.builder()
-                            .variableKey(variableKey)
-                            .build();
-                        template.addVariable(variable);
-                    }
+                if (template.getAccount() == null || !Objects.equals(template.getAccount().getId(), currentUser.getAccountId())) {
+                    throw new ResourceNotFoundException("Template not found with id: " + templateId);
                 }
+
+                template.setTemplateContent(requestDto.getTemplateContent());
+                template.setCategory(category);
+                template.setUserMessage(requestDto.getUserMessage());
+                template.setAutoTitle(requestDto.getTemplateTitle());
+                template.setStatus("VALIDATING");
+                template.setButtonText(requestDto.getButtonText());
+            } else {
+                template = Template.builder()
+                        .account(account)
+                        .templateContent(requestDto.getTemplateContent())
+                        .category(category)
+                        .userMessage(requestDto.getUserMessage())
+                        .autoTitle(requestDto.getTemplateTitle())
+                        .status("VALIDATING")
+                        .buttonText(requestDto.getButtonText())
+                        .build();
             }
 
-            // DB 저장
+            template.replaceVariables(extractVariableKeys(requestDto.getVariableList()));
             Template savedTemplate = templateRepository.save(template);
-            
-            // 카테고리 사용량 증가
             incrementCategoryUsageCount(requestDto.getCategory());
-            
 
             return TemplateSaveResponseDto.success(savedTemplate.getTemplateId().toString());
         } catch (Exception e) {
-            log.error("템플릿 저장 중 오류 발생", e);
-            return TemplateSaveResponseDto.failure("템플릿 저장 중 오류가 발생했습니다: "+e.getMessage());
+            log.error("Template save failed", e);
+            return TemplateSaveResponseDto.failure("Template save failed: " + e.getMessage());
         }
+    }
+
+    private List<String> extractVariableKeys(List<Map<String, String>> variableList) {
+        if (variableList == null || variableList.isEmpty()) {
+            return List.of();
+        }
+
+        return variableList.stream()
+                .filter(variableMap -> variableMap != null
+                        && variableMap.get("variableKey") != null
+                        && !variableMap.get("variableKey").trim().isEmpty())
+                .map(variableMap -> variableMap.get("variableKey").trim())
+                .distinct()
+                .toList();
     }
 
 

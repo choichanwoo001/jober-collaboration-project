@@ -55,21 +55,21 @@ public class TokenService {
     public Map<String, String> refreshAccessToken(String refreshToken) {
         // Refresh Token 유효성 검사
         if (!jwtTokenProvider.validateToken(refreshToken)) {
-            log.info("[TOKEN] Invalid refresh token signature or claims. token={}", refreshToken);
+            log.info("[TOKEN] Invalid refresh token signature or claims.");
             throw new UserException(UserErrorCode.INVALID_TOKEN);
         }
 
         // 토큰 타입 확인
         String tokenType = jwtTokenProvider.getTokenType(refreshToken);
         if (!"refresh".equals(tokenType)) {
-            log.warn("[TOKEN] Invalid token type. expected=refresh, actual={}, token={}", tokenType, refreshToken);
+            log.warn("[TOKEN] Invalid token type. expected=refresh, actual={}", tokenType);
             throw new UserException(UserErrorCode.INVALID_TOKEN);
         }
 
         // 계정 ID 추출
         Long accountId = jwtTokenProvider.getAccountId(refreshToken);
         if (accountId == null) {
-            log.error("[TOKEN] Account ID not found in refresh token claims. token={}", refreshToken);
+            log.error("[TOKEN] Account ID not found in refresh token claims.");
             throw new UserException(UserErrorCode.TOKEN_MISMATCH);
         }
 
